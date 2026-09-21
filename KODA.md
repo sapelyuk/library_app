@@ -1,0 +1,126 @@
+# KODA.md — контекст проекта
+
+## Обзор проекта
+
+**library_app** — бэкенд для библиотечного приложения, реализованный как набор микросервисов на **Go (Golang)**. Начата реализация: **Book Service полностью рабочий** (gRPC-API, домен, бизнес-логика, in-memory хранилище, тесты), плюс общий модуль `pkg` (logger, config). Остальные сервисы существуют только как строки в архитектурной таблице.
+
+- **Назначение:** каталог книг, учёт читателей и библиотекарей, выдача/возврат книг, уведомления о сроках возврата, единая точка входа для клиентов.
+- **Язык и стек:** Go (локально установлен `go1.26.6 windows/amd64`), gRPC, protobuf, `log/slog`; NATS/Kafka, Consul/Kubernetes DNS и PostgreSQL — в планах.
+- **Архитектурный стиль:** микросервисы с изолированным хранилищем на каждый сервис (паттерн *database-per-service*).
+- **Организация кода:** монорепо с Go-воркспейсом (`go.work`) для локальной разработки нескольких модулей одновременно.
+
+## Топология сервисов
+
+| Сервис | Зона ответственности | Порт |
+| --- | --- | --- |
+| API Gateway | Единая точка входа, маршрутизация запросов | 8080 |
+| Book Service | Каталог книг, ISBN, экземпляры | 8081 |
+| User Service | Читатели, библиотекари, аутентификация | 8082 |
+| Loan Service | Выдача/возврат, сроки возврата | 8083 |
+| Notification Service | Email/SMS-уведомления о сроках | 8084 |
+
+## Паттерны взаимодействия
+
+- **Синхронная коммуникация:** gRPC между сервисами (быстро, типизированно).
+- **Асинхронная коммуникация:** NATS или Kafka для доменных событий (`book.borrowed`, `loan.overdue`).
+- **Обнаружение сервисов:** Consul либо Kubernetes DNS.
+- **Хранилище:** отдельная база PostgreSQL на каждый сервис.
+
+## Структура каталога (фактическое состояние)
+
+```
+library_app/
+├── go.work                      # воркспейс: ./book-service, ./pkg
+├── README.md                    # архитектурная спецификация проекта
+├── KODA.md                      # этот файл
+├── scripts/
+│   └── gen_proto.ps1            # перегенерация gRPC-кода (protoc + плагины)
+├── tools/
+│   └── protoc/                  # локальный protoc 36.2 (bin/protoc.exe)
+├── pkg/                         # модуль library_app/pkg
+│   ├── config/config.go         # String/Int/Duration/RequireString из env
+│   └── logger/logger.go         # slog: json|text, debug..error, MustNew
+└── book-service/                # модуль library_app/book-service (go.mod, go.sum)
+    ├── README.md                # документация сервиса: API, env, grpcurl-примеры
+    ├── cmd/server/main.go       # конфиг, gRPC-сервер :8081, health, reflection, shutdown
+    ├── proto/book/v1/book.proto # контракт BookService (9 RPC)
+    ├── gen/go/book/v1/          # book.pb.go, book_grpc.pb.go — генерация, не править
+    ├── internal/
+    │   ├── domain/              # Book, Copy, CopyStatus, ISBN, ошибки + тесты
+    │   ├── service/             # BookService (use-case'ы) + тесты
+    │   ├── repository/          # контракты + memory/ (in-memory Store) + тесты
+    │   └── handler/             # grpc.go: прото <-> домен, ошибки -> codes.*
+    └── migrations/001_init.sql  # схема PostgreSQL (ещё не применяется)
+```
+
+`user-service`, `loan-service`, `notification-service` и `api-gateway` на диске **отсутствуют** — это следующая работа.
+
+## Статус реализации
+
+| Компонент | Состояние |
+| --- | --- |
+| `pkg/logger`, `pkg/config` | готово, используется Book Service |
+| Book Service: контракт, домен, сервис, handler, запуск | готов, собирается и работает |
+| Хранилище Book Service | только in-memory (`internal/repository/memory`), данные живут до рестарта |
+| PostgreSQL-реализация репозитория | нет; миграция `001_init.sql` написана заранее |
+| User / Loan / Notification Service, API Gateway | нет |
+| gRPC-клиенты между сервисами, события (NATS/Kafka), discovery | нет |
+| Аутентификация, CI, контейнеризация | нет |
+
+## Ключевые файлы
+
+- `README.md` — архитектурная спецификация: таблица сервисов с портами, паттерны коммуникации, целевая структура. Источник истины по архитектурным решениям.
+- `book-service/README.md` — документация сервиса: методы API, env-переменные, примеры `grpcurl`, команда генерации протобуфа.
+- `book-service/proto/book/v1/book.proto` — контракт `book.v1.BookService`: `CreateBook`, `GetBook`, `ListBooks`, `UpdateBook`, `DeleteBook`, `AddBookCopy`, `ListBookCopies`, `BorrowBookCopy`, `ReturnBookCopy`. После правки — перегенерировать код.
+- `book-service/internal/repository/repository.go` — контракты `BookRepository` и `CopyRepository`. Важно: `AcquireAvailable` — атомарная выдача первого доступного экземпляра; в описании прямо указано, что для PostgreSQL это `SELECT ... FOR UPDATE SKIP LOCKED`.
+- `book-service/internal/domain/errors.go` — доменные ошибки; handler переводит их в коды gRPC, наружу `Internal` не течёт.
+- `scripts/gen_proto.ps1` — ждёт `protoc` в `tools/protoc/bin` и `$GOPATH/bin` в `PATH`.
+
+## Сборка и запуск
+
+Воркспейс уже инициализирован (`go.work`: `./book-service`, `./pkg`). Команды выполняются из директории соответствующего модуля (из корня `go build ./...` не работает — корень не является модулем):
+
+| Задача | Команда | Где выполнять |
+| --- | --- | --- |
+| Сборка | `go build ./...` | `book-service/`, `pkg/` |
+| Статический анализ | `go vet ./...` | `book-service/`, `pkg/` |
+| Форматирование | `gofmt -l .` (список), `gofmt -w .` (править) | `book-service/`, `pkg/` |
+| Тесты | `go test ./...` | `book-service/`, `pkg/` |
+| Запуск Book Service | `go run ./cmd/server` (gRPC на `:8081`) | `book-service/` |
+| Генерация gRPC-кода | `./scripts/gen_proto.ps1` | корень (PowerShell) |
+
+Текущее состояние проверок (последний запуск): build/vet/test/gofmt — чисто в обоих модулях; 21 тест + 5 подтестов в `book-service`.
+
+Окружение: `go1.26.6 windows/amd64`; `protoc 36.2` лежит локально в `tools/protoc/bin/protoc.exe` (в системном PATH его нет); плагины `protoc-gen-go` и `protoc-gen-go-grpc` установлены в `C:\Users\yaros\go\bin`. GOPROXY доступен, Docker CLI есть, но демон обычно не запущен.
+
+## Правила разработки
+
+**Структура сервиса (проверяемое правило).** Каждый сервис — самостоятельный Go-модуль с фиксированным слоем:
+
+- `cmd/server/main.go` — только сборка зависимостей и запуск; бизнес-логика здесь запрещена.
+- `internal/domain/` — сущности и доменные ошибки, без внешних зависимостей.
+- `internal/repository/` — доступ к PostgreSQL, единственное место с SQL/ORM.
+- `internal/service/` — бизнес-правила, оркестрация репозиториев и клиентов других сервисов.
+- `internal/handler/` — транспортный слой (HTTP и/или gRPC), маппинг между внешними контрактами и доменом.
+- `proto/` — `.proto`-контракты сервиса.
+- `migrations/` — SQL-миграции базы этого сервиса.
+
+**Границы модулей.** Общая логика (logger, config) выносится в `pkg/`. Чужой `internal/` импортировать нельзя — межсервисные вызовы идут только через gRPC-контракты из `proto/` или через события.
+
+**Изоляция данных.** Каждый сервис владеет своей PostgreSQL-схемой. Прямые запросы к чужой базе запрещены; согласованность между сервисами достигается событиями (`book.borrowed`, `loan.overdue`).
+
+**Порты.** Зафиксированы таблицей сервисов и не должны меняться без обновления документации: 8080 gateway, 8081 book, 8082 user, 8083 loan, 8084 notification.
+
+**Стиль кода.** Стандартные инструменты экосистемы Go: `gofmt`/`goimports` для форматирования, `go vet` для анализа, стандартная структура имён и ошибок Go. Имена пакетов — строчные, без подчёркиваний; имена директорий — kebab-case (`book-service`).
+
+**Тестирование.** Используется стандартный `testing` (без testify). Unit-тесты живут рядом с кодом (`*_test.go`, пакет `*_test`). Тесты сервиса и репозитория гоняются поверх in-memory `Store`. TODO: тесты репозитория против PostgreSQL (тестовые контейнеры), интеграционный тест handler'а через `bufconn`, моки для gRPC-клиентов.
+
+**Конфигурация.** Переменные окружения, читаются через `pkg/config` (значения по умолчанию задаются в `cmd/server/main.go`). Префикс Book Service — `BOOK_SERVICE_*` (см. таблицу в `book-service/README.md`).
+
+## Открытые вопросы для уточнения
+
+- Выбрать брокер событий: NATS или Kafka.
+- Выбрать механизм discovery: Consul или Kubernetes DNS.
+- Выбрать драйвер/ORM для PostgreSQL и инструмент миграций.
+- Определить, какие эндпоинты gateway'я публичные (REST) и какие внутренние (gRPC).
+- Настроить CI и контейнеризацию.
