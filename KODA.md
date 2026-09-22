@@ -2,7 +2,7 @@
 
 ## Обзор проекта
 
-**library_app** — бэкенд для библиотечного приложения, реализованный как набор микросервисов на **Go (Golang)**. Начата реализация: **Book Service полностью рабочий** (gRPC-API, домен, бизнес-логика, in-memory хранилище, тесты), плюс общий модуль `pkg` (logger, config). Остальные сервисы существуют только как строки в архитектурной таблице.
+**library_app** — бэкенд для библиотечного приложения, реализованный как набор микросервисов на **Go (Golang)**. Начата реализация: **Book Service полностью рабочий** (gRPC-API, REST и Swagger через grpc-gateway, домен, бизнес-логика, in-memory хранилище, тесты), плюс общий модуль `pkg` (logger, config). Остальные сервисы существуют только как строки в архитектурной таблице.
 
 - **Назначение:** каталог книг, учёт читателей и библиотекарей, выдача/возврат книг, уведомления о сроках возврата, единая точка входа для клиентов.
 - **Язык и стек:** Go (локально установлен `go1.26.6 windows/amd64`), gRPC, protobuf, `log/slog`; NATS/Kafka, Consul/Kubernetes DNS и PostgreSQL — в планах.
@@ -34,22 +34,24 @@ library_app/
 ├── README.md                    # архитектурная спецификация проекта
 ├── KODA.md                      # этот файл
 ├── scripts/
-│   └── gen_proto.ps1            # перегенерация gRPC-кода (protoc + плагины)
+│   └── gen_proto.ps1            # перегенерация кода (protoc + 4 плагина)
+├── third_party/                 # внешние .proto: google/api, protoc-gen-openapiv2/options
 ├── tools/
 │   └── protoc/                  # локальный protoc 36.2 (bin/protoc.exe)
 ├── pkg/                         # модуль library_app/pkg
 │   ├── config/config.go         # String/Int/Duration/RequireString из env
 │   └── logger/logger.go         # slog: json|text, debug..error, MustNew
 └── book-service/                # модуль library_app/book-service (go.mod, go.sum)
-    ├── README.md                # документация сервиса: API, env, grpcurl-примеры
-    ├── cmd/server/main.go       # конфиг, gRPC-сервер :8081, health, reflection, shutdown
-    ├── proto/book/v1/book.proto # контракт BookService (9 RPC)
-    ├── gen/go/book/v1/          # book.pb.go, book_grpc.pb.go — генерация, не править
+    ├── README.md                # документация сервиса: API, env, grpcurl/curl-примеры
+    ├── cmd/server/main.go       # конфиг, gRPC :8081 + HTTP :8091, health, reflection, shutdown
+    ├── proto/book/v1/book.proto # контракт BookService (9 RPC) + аннотации google.api.http
+    ├── gen/go/book/v1/          # book.pb.go, book_grpc.pb.go, book.pb.gw.go — генерация, не править
+    ├── docs/                    # book/v1/book.swagger.json (генерация) + docs.go (embed)
     ├── internal/
     │   ├── domain/              # Book, Copy, CopyStatus, ISBN, ошибки + тесты
     │   ├── service/             # BookService (use-case'ы) + тесты
     │   ├── repository/          # контракты + memory/ (in-memory Store) + тесты
-    │   └── handler/             # grpc.go: прото <-> домен, ошибки -> codes.*
+    │   └── handler/             # grpc.go: прото <-> домен; http.go: gateway + Swagger UI
     └── migrations/001_init.sql  # схема PostgreSQL (ещё не применяется)
 ```
 
@@ -61,6 +63,7 @@ library_app/
 | --- | --- |
 | `pkg/logger`, `pkg/config` | готово, используется Book Service |
 | Book Service: контракт, домен, сервис, handler, запуск | готов, собирается и работает |
+| REST-слой и Swagger Book Service | готов: grpc-gateway на `:8091`, Swagger UI на `/swagger/` |
 | Хранилище Book Service | только in-memory (`internal/repository/memory`), данные живут до рестарта |
 | PostgreSQL-реализация репозитория | нет; миграция `001_init.sql` написана заранее |
 | User / Loan / Notification Service, API Gateway | нет |
@@ -71,10 +74,13 @@ library_app/
 
 - `README.md` — архитектурная спецификация: таблица сервисов с портами, паттерны коммуникации, целевая структура. Источник истины по архитектурным решениям.
 - `book-service/README.md` — документация сервиса: методы API, env-переменные, примеры `grpcurl`, команда генерации протобуфа.
-- `book-service/proto/book/v1/book.proto` — контракт `book.v1.BookService`: `CreateBook`, `GetBook`, `ListBooks`, `UpdateBook`, `DeleteBook`, `AddBookCopy`, `ListBookCopies`, `BorrowBookCopy`, `ReturnBookCopy`. После правки — перегенерировать код.
+- `book-service/proto/book/v1/book.proto` — контракт `book.v1.BookService`: `CreateBook`, `GetBook`, `ListBooks`, `UpdateBook`, `DeleteBook`, `AddBookCopy`, `ListBookCopies`, `BorrowBookCopy`, `ReturnBookCopy`. Каждый RPC аннотирован `google.api.http` — это источник и REST-маршрутов, и Swagger-спецификации. После правки — перегенерировать код.
+- `book-service/internal/handler/http.go` — HTTP-слой: grpc-gateway монтируется на `/v1/`, Swagger UI на `/swagger/`, спецификация на `/swagger/swagger.json`. Вызывает gRPC-сервер этого же процесса через локальный клиент.
+- `book-service/docs/docs.go` — `//go:embed` сгенерированной `book/v1/book.swagger.json`; сам JSON правится только перегенерацией.
 - `book-service/internal/repository/repository.go` — контракты `BookRepository` и `CopyRepository`. Важно: `AcquireAvailable` — атомарная выдача первого доступного экземпляра; в описании прямо указано, что для PostgreSQL это `SELECT ... FOR UPDATE SKIP LOCKED`.
 - `book-service/internal/domain/errors.go` — доменные ошибки; handler переводит их в коды gRPC, наружу `Internal` не течёт.
-- `scripts/gen_proto.ps1` — ждёт `protoc` в `tools/protoc/bin` и `$GOPATH/bin` в `PATH`.
+- `scripts/gen_proto.ps1` — ждёт `protoc` в `tools/protoc/bin` и `$GOPATH/bin` в `PATH`; подключает `-I third_party` и плагины `protoc-gen-grpc-gateway`, `protoc-gen-openapiv2`.
+- `third_party/` — `.proto` зависимости (`google/api/annotations.proto`, `google/api/http.proto`, `protoc-gen-openapiv2/options/*`): только include-путь, код из них не генерируется.
 
 ## Сборка и запуск
 
@@ -86,12 +92,12 @@ library_app/
 | Статический анализ | `go vet ./...` | `book-service/`, `pkg/` |
 | Форматирование | `gofmt -l .` (список), `gofmt -w .` (править) | `book-service/`, `pkg/` |
 | Тесты | `go test ./...` | `book-service/`, `pkg/` |
-| Запуск Book Service | `go run ./cmd/server` (gRPC на `:8081`) | `book-service/` |
+| Запуск Book Service | `go run ./cmd/server` (gRPC на `:8081`, REST + Swagger на `:8091`) | `book-service/` |
 | Генерация gRPC-кода | `./scripts/gen_proto.ps1` | корень (PowerShell) |
 
-Текущее состояние проверок (последний запуск): build/vet/test/gofmt — чисто в обоих модулях; 21 тест + 5 подтестов в `book-service`.
+Текущее состояние проверок (последний запуск): build/vet/test/gofmt — чисто в обоих модулях; 23 теста + 27 подтестов в `book-service`.
 
-Окружение: `go1.26.6 windows/amd64`; `protoc 36.2` лежит локально в `tools/protoc/bin/protoc.exe` (в системном PATH его нет); плагины `protoc-gen-go` и `protoc-gen-go-grpc` установлены в `C:\Users\yaros\go\bin`. GOPROXY доступен, Docker CLI есть, но демон обычно не запущен.
+Окружение: `go1.26.6 windows/amd64`; `protoc 36.2` лежит локально в `tools/protoc/bin/protoc.exe` (в системном PATH его нет); плагины `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-grpc-gateway`, `protoc-gen-openapiv2` установлены в `C:\Users\yaros\go\bin`. GOPROXY доступен, Docker CLI есть, но демон обычно не запущен.
 
 ## Правила разработки
 
@@ -109,11 +115,11 @@ library_app/
 
 **Изоляция данных.** Каждый сервис владеет своей PostgreSQL-схемой. Прямые запросы к чужой базе запрещены; согласованность между сервисами достигается событиями (`book.borrowed`, `loan.overdue`).
 
-**Порты.** Зафиксированы таблицей сервисов и не должны меняться без обновления документации: 8080 gateway, 8081 book, 8082 user, 8083 loan, 8084 notification.
+**Порты.** Зафиксированы таблицей сервисов и не должны меняться без обновления документации: 8080 gateway, 8081 book, 8082 user, 8083 loan, 8084 notification. Исключение — вспомогательный HTTP у Book Service (`8091` = gRPC-порт + 10): REST и Swagger для разработки и ручной проверки.
 
 **Стиль кода.** Стандартные инструменты экосистемы Go: `gofmt`/`goimports` для форматирования, `go vet` для анализа, стандартная структура имён и ошибок Go. Имена пакетов — строчные, без подчёркиваний; имена директорий — kebab-case (`book-service`).
 
-**Тестирование.** Используется стандартный `testing` (без testify). Unit-тесты живут рядом с кодом (`*_test.go`, пакет `*_test`). Тесты сервиса и репозитория гоняются поверх in-memory `Store`. TODO: тесты репозитория против PostgreSQL (тестовые контейнеры), интеграционный тест handler'а через `bufconn`, моки для gRPC-клиентов.
+**Тестирование.** Используется стандартный `testing` (без testify). Unit-тесты живут рядом с кодом (`*_test.go`, пакет `*_test`). Тесты сервиса и репозитория гоняются поверх in-memory `Store`, HTTP-слой проверяется через `httptest` (`internal/handler/http_test.go`). TODO: тесты репозитория против PostgreSQL (тестовые контейнеры), интеграционный тест gRPC-handler'а через `bufconn`, моки для gRPC-клиентов.
 
 **Конфигурация.** Переменные окружения, читаются через `pkg/config` (значения по умолчанию задаются в `cmd/server/main.go`). Префикс Book Service — `BOOK_SERVICE_*` (см. таблицу в `book-service/README.md`).
 

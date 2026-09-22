@@ -1,4 +1,5 @@
-// Command server starts the Book Service gRPC server.
+// Command server starts the Book Service: a gRPC server plus the REST and
+// Swagger endpoints generated from the same proto contract.
 package main
 
 import (
@@ -7,12 +8,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -30,6 +33,7 @@ const healthService = "book.v1.BookService"
 
 type appConfig struct {
 	grpcAddr        string
+	httpAddr        string
 	logLevel        string
 	logFormat       string
 	shutdownTimeout time.Duration
@@ -38,6 +42,7 @@ type appConfig struct {
 func loadConfig() appConfig {
 	return appConfig{
 		grpcAddr:        pkgconfig.String("BOOK_SERVICE_GRPC_ADDR", ":8081"),
+		httpAddr:        pkgconfig.String("BOOK_SERVICE_HTTP_ADDR", ":8091"),
 		logLevel:        pkgconfig.String("BOOK_SERVICE_LOG_LEVEL", "info"),
 		logFormat:       pkgconfig.String("BOOK_SERVICE_LOG_FORMAT", "json"),
 		shutdownTimeout: pkgconfig.Duration("BOOK_SERVICE_SHUTDOWN_TIMEOUT", 15*time.Second),
@@ -80,12 +85,29 @@ func run(cfg appConfig, log *slog.Logger) error {
 		return fmt.Errorf("listen on %s: %w", cfg.grpcAddr, err)
 	}
 
+	httpServer, conn, err := startREST(cfg, listener.Addr())
+	if err != nil {
+		return err
+	}
+
 	serveErr := make(chan error, 1)
 
 	go func() {
 		log.Info("book-service listening", "addr", cfg.grpcAddr, "storage", "in-memory")
 
 		if err := grpcServer.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			serveErr <- err
+
+			return
+		}
+
+		serveErr <- nil
+	}()
+
+	go func() {
+		log.Info("book-service REST listening", "addr", cfg.httpAddr, "swagger", swaggerURL(cfg.httpAddr))
+
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err
 
 			return
@@ -103,13 +125,85 @@ func run(cfg appConfig, log *slog.Logger) error {
 	case <-ctx.Done():
 		log.Info("shutdown signal received", "timeout", cfg.shutdownTimeout.String())
 
-		shutdown(grpcServer, healthServer, cfg.shutdownTimeout, log)
+		shutdownREST(httpServer, conn, cfg.shutdownTimeout, log)
+		shutdownGRPC(grpcServer, healthServer, cfg.shutdownTimeout, log)
 
 		return nil
 	}
 }
 
-func shutdown(server *grpc.Server, healthServer *health.Server, timeout time.Duration, log *slog.Logger) {
+// startREST serves the REST and Swagger surface of the service on top of its
+// own gRPC API, which is the same path a gateway would take.
+func startREST(cfg appConfig, grpcAddr net.Addr) (*http.Server, *grpc.ClientConn, error) {
+	target := localTarget(grpcAddr)
+
+	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial %s: %w", target, err)
+	}
+
+	restHandler, err := handler.NewREST(bookv1.NewBookServiceClient(conn))
+	if err != nil {
+		conn.Close()
+
+		return nil, nil, err
+	}
+
+	server := &http.Server{
+		Addr:              cfg.httpAddr,
+		Handler:           restHandler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+	}
+
+	return server, conn, nil
+}
+
+// localTarget converts a listen address into a dialable one: wildcard hosts
+// such as ":8081" or "[::]:8081" cannot be dialed directly.
+func localTarget(addr net.Addr) string {
+	host, port, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String()
+	}
+
+	if host == "" || host == "::" || host == "0.0.0.0" || host == "*" {
+		host = "127.0.0.1"
+	}
+
+	return net.JoinHostPort(host, port)
+}
+
+// swaggerURL renders the documentation address for the startup log.
+func swaggerURL(httpAddr string) string {
+	host, port, err := net.SplitHostPort(httpAddr)
+	if err != nil {
+		return "http://localhost" + httpAddr + "/swagger/"
+	}
+
+	if host == "" {
+		host = "localhost"
+	}
+
+	return "http://" + net.JoinHostPort(host, port) + "/swagger/"
+}
+
+// shutdownREST stops the HTTP listener and releases the loopback gRPC client.
+func shutdownREST(server *http.Server, conn *grpc.ClientConn, timeout time.Duration, log *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Warn("http shutdown failed", "error", err)
+	}
+
+	if err := conn.Close(); err != nil {
+		log.Warn("closing grpc client failed", "error", err)
+	}
+}
+
+func shutdownGRPC(server *grpc.Server, healthServer *health.Server, timeout time.Duration, log *slog.Logger) {
 	// Stop advertising readiness first so that the gateway drains connections.
 	healthServer.SetServingStatus(healthService, healthpb.HealthCheckResponse_NOT_SERVING)
 

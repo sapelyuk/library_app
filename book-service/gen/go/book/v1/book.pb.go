@@ -7,6 +7,8 @@
 package bookv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -396,9 +398,11 @@ func (x *GetBookRequest) GetId() string {
 type ListBooksRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Free text filter matched against title, author and ISBN.
-	Query         string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Limit         int32  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// Page size, 0 means the service default (20), capped at 100.
+	Limit int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Number of entries to skip.
+	Offset        int32 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -868,7 +872,7 @@ var File_book_v1_book_proto protoreflect.FileDescriptor
 
 const file_book_v1_book_proto_rawDesc = "" +
 	"\n" +
-	"\x12book/v1/book.proto\x12\abook.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe1\x02\n" +
+	"\x12book/v1/book.proto\x12\abook.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\"\xe1\x02\n" +
 	"\x04Book\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04isbn\x18\x02 \x01(\tR\x04isbn\x12\x14\n" +
@@ -937,20 +941,22 @@ const file_book_v1_book_proto_rawDesc = "" +
 	"\x15COPY_STATUS_AVAILABLE\x10\x01\x12\x17\n" +
 	"\x13COPY_STATUS_ON_LOAN\x10\x02\x12\x14\n" +
 	"\x10COPY_STATUS_LOST\x10\x03\x12\x1b\n" +
-	"\x17COPY_STATUS_MAINTENANCE\x10\x042\xd4\x04\n" +
-	"\vBookService\x127\n" +
+	"\x17COPY_STATUS_MAINTENANCE\x10\x042\xdc\x06\n" +
+	"\vBookService\x12M\n" +
 	"\n" +
-	"CreateBook\x12\x1a.book.v1.CreateBookRequest\x1a\r.book.v1.Book\x121\n" +
-	"\aGetBook\x12\x17.book.v1.GetBookRequest\x1a\r.book.v1.Book\x12B\n" +
-	"\tListBooks\x12\x19.book.v1.ListBooksRequest\x1a\x1a.book.v1.ListBooksResponse\x127\n" +
+	"CreateBook\x12\x1a.book.v1.CreateBookRequest\x1a\r.book.v1.Book\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/books\x12I\n" +
+	"\aGetBook\x12\x17.book.v1.GetBookRequest\x1a\r.book.v1.Book\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/books/{id}\x12U\n" +
+	"\tListBooks\x12\x19.book.v1.ListBooksRequest\x1a\x1a.book.v1.ListBooksResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/books\x12R\n" +
 	"\n" +
-	"UpdateBook\x12\x1a.book.v1.UpdateBookRequest\x1a\r.book.v1.Book\x12@\n" +
+	"UpdateBook\x12\x1a.book.v1.UpdateBookRequest\x1a\r.book.v1.Book\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*2\x0e/v1/books/{id}\x12X\n" +
 	"\n" +
-	"DeleteBook\x12\x1a.book.v1.DeleteBookRequest\x1a\x16.google.protobuf.Empty\x12=\n" +
-	"\vAddBookCopy\x12\x1b.book.v1.AddBookCopyRequest\x1a\x11.book.v1.BookCopy\x12Q\n" +
-	"\x0eListBookCopies\x12\x1e.book.v1.ListBookCopiesRequest\x1a\x1f.book.v1.ListBookCopiesResponse\x12C\n" +
-	"\x0eBorrowBookCopy\x12\x1e.book.v1.BorrowBookCopyRequest\x1a\x11.book.v1.BookCopy\x12C\n" +
-	"\x0eReturnBookCopy\x12\x1e.book.v1.ReturnBookCopyRequest\x1a\x11.book.v1.BookCopyB0Z.library_app/book-service/gen/go/book/v1;bookv1b\x06proto3"
+	"DeleteBook\x12\x1a.book.v1.DeleteBookRequest\x1a\x16.google.protobuf.Empty\"\x16\x82\xd3\xe4\x93\x02\x10*\x0e/v1/books/{id}\x12d\n" +
+	"\vAddBookCopy\x12\x1b.book.v1.AddBookCopyRequest\x1a\x11.book.v1.BookCopy\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/books/{book_id}/copies\x12u\n" +
+	"\x0eListBookCopies\x12\x1e.book.v1.ListBookCopiesRequest\x1a\x1f.book.v1.ListBookCopiesResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/books/{book_id}/copies\x12g\n" +
+	"\x0eBorrowBookCopy\x12\x1e.book.v1.BorrowBookCopyRequest\x1a\x11.book.v1.BookCopy\"\"\x82\xd3\xe4\x93\x02\x1c\"\x1a/v1/books/{book_id}/borrow\x12h\n" +
+	"\x0eReturnBookCopy\x12\x1e.book.v1.ReturnBookCopyRequest\x1a\x11.book.v1.BookCopy\"#\x82\xd3\xe4\x93\x02\x1d\"\x1b/v1/copies/{copy_id}/returnB\xf2\x01\x92A\xbe\x01\x12\x97\x01\n" +
+	"\x10Book Service API\x12oCatalog of books and inventory of physical copies. REST endpoints are proxied to book.v1.BookService over gRPC.\"\r\n" +
+	"\vlibrary_app2\x031.02\x10application/json:\x10application/jsonZ.library_app/book-service/gen/go/book/v1;bookv1b\x06proto3"
 
 var (
 	file_book_v1_book_proto_rawDescOnce sync.Once
