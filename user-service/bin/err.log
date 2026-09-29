@@ -1,0 +1,5 @@
+{"time":"2026-09-29T21:15:36.5513276+03:00","level":"INFO","msg":"migration applied","name":"001_init","checksum":"a6e20e5823a9"}
+{"time":"2026-09-29T21:15:36.5976961+03:00","level":"INFO","msg":"migrations checked","applied":1}
+{"time":"2026-09-29T21:15:36.6482226+03:00","level":"INFO","msg":"seed librarian created","email":"head@library.local","user_id":"cd2bf2bf-b563-43dc-8dfd-227ba7197143"}
+{"time":"2026-09-29T21:15:36.6503689+03:00","level":"INFO","msg":"user-service listening","addr":":8082","storage":"postgresql"}
+{"time":"2026-09-29T21:15:36.6503689+03:00","level":"INFO","msg":"user-service REST listening","addr":":8092","swagger":"http://localhost:8092/swagger/"}
