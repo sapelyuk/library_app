@@ -1,97 +1,111 @@
 # Library app
-This is backend microservices for library app. Services are written in Golang.
-Work in progress...
 
-## Architecture
+Бэкенд-микросервисы для библиотечного приложения. Сервисы написаны на Go.
+В процессе разработки...
 
-| Service              | Responsibility                 | Port |
-|----------------------|--------------------------------|------|
-| Book Service         | Books catalog, ISBN, copies    | 8081 |
-| User Service         | Members, librarians, auth      | 8082 |
-| Loan Service         | Borrow/return, due dates       | 8083 |
-| Notification Service | Email/SMS on due dates         | 8084 |
-| API Gateway          | Single entry point, routing    | 8080 |
+## Архитектура
 
-Book Service additionally serves a development HTTP surface on **8091**: REST endpoints
-generated from the `google.api.http` annotations of its proto contract (grpc-gateway)
-plus a Swagger UI at `http://localhost:8091/swagger/`. User Service mirrors this on
-**8082** (gRPC) / **8092** (REST + Swagger).
+| Сервис               | Ответственность                    | Порт |
+|----------------------|------------------------------------|------|
+| API Gateway          | Единая точка входа, маршрутизация  | 8080 |
+| Book Service         | Каталог книг, ISBN, экземпляры     | 8081 |
+| User Service         | Читатели, библиотекари, доступ     | 8082 |
+| Loan Service         | Выдача/возврат, сроки возврата     | 8083 |
+| Notification Service | Email/SMS-уведомления о сроках     | 8084 |
 
-## Communication patterns:
-- Sync: gRPC between services (fast, typed)
-- Async: NATS/Kafka for events (book.borrowed, loan.overdue)
-- Discovery: Consul or Kubernetes DNS
-- Storage: Postgres per service (database-per-service pattern)
+Book Service дополнительно поднимает HTTP-слой для разработки на **8091**: REST-эндпоинты,
+сгенерированные из аннотаций `google.api.http` его proto-контракта (grpc-gateway),
+плюс Swagger UI по адресу `http://localhost:8091/swagger/`. User Service повторяет
+это на **8082** (gRPC) / **8092** (REST + Swagger).
 
-## Status (as of 2026-09)
+## Паттерны взаимодействия:
+- Синхронно: gRPC между сервисами (быстро, типизированно)
+- Асинхронно: NATS/Kafka для событий (`book.borrowed`, `loan.overdue`)
+- Обнаружение сервисов: Consul или Kubernetes DNS
+- Хранилище: отдельный PostgreSQL на каждый сервис (паттерн database-per-service)
 
-| Component                                | State                                                    |
-|------------------------------------------|----------------------------------------------------------|
-| Shared `pkg/` (logger, config, migrate)  | done                                                     |
-| Book Service (proto, domain, service, repository, handler, server) | done, in-memory storage |
-| Book Service REST + Swagger UI (grpc-gateway, `:8091`) | done |
-| Book Service PostgreSQL repository       | not started; migration `001_init.sql` is ready           |
-| User Service (proto, domain, security, service, handler, server) | done, **PostgreSQL** storage (argon2id + bearer tokens) |
-| User Service REST + Swagger UI (grpc-gateway, `:8092`) | done |
-| User Service migrations runner (`pkg/migrate`, embed FS) | done, applied at startup |
-| Loan / Notification Service, API Gateway | not started                                              |
-| Inter-service gRPC clients, events, discovery | not started (User Service exposes `AuthenticateToken` for the future gateway) |
-| CI, containerization                     | not started                                              |
+## Состояние (на 2026-09)
 
-Run Book Service locally:
+| Компонент                                             | Состояние                                              |
+|-------------------------------------------------------|--------------------------------------------------------|
+| Общий `pkg/` (logger, config, migrate)                | готово                                                 |
+| Book Service (proto, domain, service, repository, handler, server) | готово, хранилище in-memory         |
+| Book Service REST + Swagger UI (grpc-gateway, `:8091`) | готово                                                |
+| Book Service PostgreSQL repository                     | не начато; миграция `001_init.sql` готова              |
+| User Service (proto, domain, security, service, handler, server) | готово, хранилище **PostgreSQL** (argon2id + bearer-токены) |
+| User Service REST + Swagger UI (grpc-gateway, `:8092`) | готово                                                |
+| Миграции User Service (`pkg/migrate`, embed FS)        | готовы, применяются при старте                         |
+| Loan / Notification Service, API Gateway               | не начато                                              |
+| Межсервисные gRPC-клиенты, события, discovery          | не начато (User Service отдаёт `AuthenticateToken` для будущего gateway) |
+| CI, контейнеризация                                    | не начато                                              |
+
+Локальный запуск Book Service:
 
 ```bash
 cd book-service
-go run ./cmd/server     # gRPC on :8081, REST + Swagger on :8091
+go run ./cmd/server     # gRPC на :8081, REST + Swagger на :8091
 ```
 
-Run User Service locally (needs a PostgreSQL database; see `user-service/README.md`
-for the one-time role/database provisioning and the `USER_SERVICE_SEED_LIBRARIAN_*`
-bootstrap variables):
+Локальный запуск User Service (нужна база PostgreSQL; одноразовое создание роли и
+базы и переменные сида `USER_SERVICE_SEED_LIBRARIAN_*` описаны в `user-service/README.md`):
 
 ```bash
 cd user-service
-go run ./cmd/server     # gRPC on :8082, REST + Swagger on :8092
+go run ./cmd/server     # gRPC на :8082, REST + Swagger на :8092
 ```
 
-Build / check / test (inside each module directory, not from the repo root):
+Сборка / проверка / тесты (из директории модуля, не из корня репозитория):
 
 ```bash
 go build ./... && go vet ./... && go test ./...
 ```
 
-Regenerate gRPC code after editing a `.proto` contract:
+Перегенерация кода gRPC после правки `.proto`-контракта:
 
 ```powershell
 ./scripts/gen_proto.ps1
 ```
 
-## Project Structure (actual)
+## Структура проекта (фактическая)
 
+```
 library_app/
-├── go.work              # workspace: ./book-service, ./pkg
-├── README.md            # this file
-├── KODA.md              # repo context for AI sessions
+├── go.work              # воркспейс: ./book-service, ./user-service, ./pkg
+├── README.md            # этот файл
+├── KODA.md              # контекст репозитория для AI-сессий
 ├── scripts/
-│   └── gen_proto.ps1    # protoc + go/go-grpc/grpc-gateway/openapiv2 codegen
+│   └── gen_proto.ps1    # кодогенерация protoc + go/go-grpc/grpc-gateway/openapiv2
 ├── third_party/         # vendored .proto includes (google/api, openapiv2 options)
 ├── tools/
-│   └── protoc/          # local protoc 36.2
-├── pkg/                 # shared libs (logger, config)
-├── book-service/        # implemented, see book-service/README.md
+│   └── protoc/          # локальный protoc 36.2
+├── pkg/                 # общие библиотеки (config, logger, migrate)
+├── book-service/        # реализован, см. book-service/README.md
 │   ├── cmd/server/
 │   ├── proto/book/v1/
-│   ├── gen/go/          # generated code, do not edit
-│   ├── docs/            # generated swagger.json + go:embed wrapper
+│   ├── gen/go/          # генерация, не править руками
+│   ├── docs/            # swagger.json (генерация) + обёртка go:embed
 │   ├── internal/
 │   │   ├── domain/
-│   │   ├── repository/  # contracts + in-memory implementation
+│   │   ├── repository/  # контракты + in-memory реализация
 │   │   ├── service/
 │   │   └── handler/
 │   └── migrations/
-├── api-gateway/         # not started
-├── user-service/        # not started
-├── loan-service/        # not started
-└── notification-service/ # not started
+├── user-service/        # реализован, см. user-service/README.md
+│   ├── cmd/server/
+│   ├── proto/user/v1/
+│   ├── gen/go/          # генерация, не править руками
+│   ├── docs/            # swagger.json (генерация) + обёртка go:embed
+│   ├── internal/
+│   │   ├── domain/      # User, Role, Status, Email, Session, RBAC
+│   │   ├── security/    # argon2id, токены
+│   │   ├── repository/  # контракты + postgres/
+│   │   ├── service/
+│   │   └── handler/     # gRPC, auth-интерцептор, REST + Swagger
+│   └── migrations/
+├── api-gateway/         # не начато
+├── loan-service/        # не начато
+└── notification-service/ # не начато
+```
 
-Use Go workspaces (go.work) for local multi-module dev.
+Для локальной разработки нескольких модулей одновременно используется Go-воркспейс
+(`go.work`).
