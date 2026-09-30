@@ -1,1 +1,13 @@
-library_app.code-workspace
+# Editor / workspace files
+*.code-workspace
+
+# Build output of the services (go build -o bin/...).
+# Exception: tools/protoc/bin/protoc.exe is a vendored tool and stays tracked;
+# git keeps already-tracked files regardless of this rule.
+bin/
+
+# Binaries produced by the local Go toolchain.
+*.exe
+
+# Local run logs captured when starting the services.
+*.log
