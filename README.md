@@ -1,5 +1,6 @@
 # Library app
-This is backend microservices for library app. Services should be written in Golang.
+This is backend microservices for library app. Services are written in Golang.
+Work in progress...
 
 ## Architecture
 
@@ -13,7 +14,8 @@ This is backend microservices for library app. Services should be written in Gol
 
 Book Service additionally serves a development HTTP surface on **8091**: REST endpoints
 generated from the `google.api.http` annotations of its proto contract (grpc-gateway)
-plus a Swagger UI at `http://localhost:8091/swagger/`.
+plus a Swagger UI at `http://localhost:8091/swagger/`. User Service mirrors this on
+**8082** (gRPC) / **8092** (REST + Swagger).
 
 ## Communication patterns:
 - Sync: gRPC between services (fast, typed)
@@ -25,19 +27,31 @@ plus a Swagger UI at `http://localhost:8091/swagger/`.
 
 | Component                                | State                                                    |
 |------------------------------------------|----------------------------------------------------------|
-| Shared `pkg/` (logger, config)           | done                                                     |
+| Shared `pkg/` (logger, config, migrate)  | done                                                     |
 | Book Service (proto, domain, service, repository, handler, server) | done, in-memory storage |
 | Book Service REST + Swagger UI (grpc-gateway, `:8091`) | done |
 | Book Service PostgreSQL repository       | not started; migration `001_init.sql` is ready           |
-| User / Loan / Notification Service, API Gateway | not started                                       |
-| Inter-service gRPC clients, events, discovery | not started                                        |
-| Auth, CI, containerization               | not started                                              |
+| User Service (proto, domain, security, service, handler, server) | done, **PostgreSQL** storage (argon2id + bearer tokens) |
+| User Service REST + Swagger UI (grpc-gateway, `:8092`) | done |
+| User Service migrations runner (`pkg/migrate`, embed FS) | done, applied at startup |
+| Loan / Notification Service, API Gateway | not started                                              |
+| Inter-service gRPC clients, events, discovery | not started (User Service exposes `AuthenticateToken` for the future gateway) |
+| CI, containerization                     | not started                                              |
 
 Run Book Service locally:
 
 ```bash
 cd book-service
 go run ./cmd/server     # gRPC on :8081, REST + Swagger on :8091
+```
+
+Run User Service locally (needs a PostgreSQL database; see `user-service/README.md`
+for the one-time role/database provisioning and the `USER_SERVICE_SEED_LIBRARIAN_*`
+bootstrap variables):
+
+```bash
+cd user-service
+go run ./cmd/server     # gRPC on :8082, REST + Swagger on :8092
 ```
 
 Build / check / test (inside each module directory, not from the repo root):

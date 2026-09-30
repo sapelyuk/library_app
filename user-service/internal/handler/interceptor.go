@@ -6,7 +6,9 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"library_app/user-service/internal/domain"
 )
@@ -65,16 +67,34 @@ func NewAuthUnaryInterceptor(auth Authenticator) grpc.UnaryServerInterceptor {
 
 		token, ok := bearerToken(ctx)
 		if !ok {
-			return nil, domain.ErrUnauthenticated
+			return nil, toStatus(domain.ErrUnauthenticated)
 		}
 
 		principal, err := auth.Authenticate(ctx, token)
 		if err != nil {
-			return nil, err
+			return nil, toStatus(err)
 		}
 
 		return handler(withPrincipal(ctx, principal), req)
 	}
+}
+
+// toStatus translates an error of the authentication path into a status error.
+//
+// The interceptor runs before any handler, so it cannot leave the translation to
+// the handler: an error it returns directly would reach the client as an
+// "unknown" status, which the REST gateway renders as 500. A missing token has to
+// be a 401, not a server fault.
+func toStatus(err error) error {
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return st.Err()
+	}
+
+	if code, mapped := codeFor(err); mapped {
+		return status.Error(code, err.Error())
+	}
+
+	return status.Error(codes.Internal, "internal error")
 }
 
 // bearerToken pulls the credential out of the metadata of the call.

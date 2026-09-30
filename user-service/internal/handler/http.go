@@ -14,7 +14,6 @@ import (
 	"net/http"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"library_app/user-service/docs"
@@ -44,10 +43,6 @@ func NewREST(client userv1.UserServiceClient) (http.Handler, error) {
 			// than an absent key while the API is explored in a browser.
 			MarshalOptions: protojson.MarshalOptions{EmitUnpopulated: true},
 		}),
-		// The bearer token arrives as an Authorization header. grpc-gateway
-		// forwards it into gRPC metadata on its own, and this hook only adds
-		// the request identifier the interceptor and the logs work with.
-		runtime.WithMetadata(forwardRequestMetadata),
 	)
 
 	if err := userv1.RegisterUserServiceHandlerClient(context.Background(), gateway, client); err != nil {
@@ -61,18 +56,6 @@ func NewREST(client userv1.UserServiceClient) (http.Handler, error) {
 	mux.Handle("/", http.RedirectHandler(swaggerPrefix, http.StatusFound))
 
 	return mux, nil
-}
-
-// forwardRequestMetadata keeps the header set of a REST call visible to the gRPC
-// side. The default OutgoingHeaderMatcher of the gateway already forwards
-// Authorization, so this function exists to make that dependency explicit rather
-// than to add behaviour.
-func forwardRequestMetadata(_ context.Context, r *http.Request) metadata.MD {
-	if value := r.Header.Get("Authorization"); value != "" {
-		return metadata.Pairs(mdAuthorization, value)
-	}
-
-	return nil
 }
 
 // serveSwaggerSpec answers with the specification generated from user.proto.

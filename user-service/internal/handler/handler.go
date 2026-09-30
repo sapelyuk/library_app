@@ -104,15 +104,29 @@ func (h *Handler) toGRPC(ctx context.Context, err error) error {
 		return st.Err()
 	}
 
-	for _, mapping := range codeByError {
-		if errors.Is(err, mapping.err) {
-			return status.Error(mapping.code, mapping.err.Error())
-		}
+	if code, mapped := codeFor(err); mapped {
+		return status.Error(code, err.Error())
 	}
 
 	h.log.ErrorContext(ctx, "unmapped error", "error", err)
 
 	return status.Error(codes.Internal, "internal error")
+}
+
+// codeFor resolves a domain error into its status code.
+//
+// The interceptor needs the same answer as a handler does, and it has no logger
+// to report an unmapped error to, so the lookup is a function of its own rather
+// than a method on the handler. The second return value tells the caller whether
+// the error was recognised at all.
+func codeFor(err error) (codes.Code, bool) {
+	for _, mapping := range codeByError {
+		if errors.Is(err, mapping.err) {
+			return mapping.code, true
+		}
+	}
+
+	return codes.Internal, false
 }
 
 // protoUser converts an account into the contract message.
