@@ -2,10 +2,24 @@ syntax = "proto3";
 
 package book.v1;
 
+import "google/api/annotations.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 
 option go_package = "library_app/book-service/gen/go/book/v1;bookv1";
+
+// Metadata of the Swagger UI served by the HTTP interface of the service.
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "Book Service API"
+    version: "1.0"
+    description: "Catalog of books and inventory of physical copies. REST endpoints are proxied to book.v1.BookService over gRPC."
+    contact: {name: "library_app"}
+  }
+  consumes: "application/json"
+  produces: "application/json"
+};
 
 // Status of a single physical copy of a book.
 enum CopyStatus {
@@ -54,7 +68,9 @@ message GetBookRequest {
 message ListBooksRequest {
   // Free text filter matched against title, author and ISBN.
   string query = 1;
+  // Page size, 0 means the service default (20), capped at 100.
   int32 limit = 2;
+  // Number of entries to skip.
   int32 offset = 3;
 }
 
@@ -100,14 +116,63 @@ message ReturnBookCopyRequest {
 }
 
 // Book catalog and copy inventory of the library.
+//
+// Every RPC is also exposed as a REST endpoint through grpc-gateway,
+// which is what the Swagger UI at /swagger/ exercises.
 service BookService {
-  rpc CreateBook(CreateBookRequest) returns (Book);
-  rpc GetBook(GetBookRequest) returns (Book);
-  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse);
-  rpc UpdateBook(UpdateBookRequest) returns (Book);
-  rpc DeleteBook(DeleteBookRequest) returns (google.protobuf.Empty);
-  rpc AddBookCopy(AddBookCopyRequest) returns (BookCopy);
-  rpc ListBookCopies(ListBookCopiesRequest) returns (ListBookCopiesResponse);
-  rpc BorrowBookCopy(BorrowBookCopyRequest) returns (BookCopy);
-  rpc ReturnBookCopy(ReturnBookCopyRequest) returns (BookCopy);
+  // Adds an edition to the catalog. ISBN must be valid and unique.
+  rpc CreateBook(CreateBookRequest) returns (Book) {
+    option (google.api.http) = {
+      post: "/v1/books"
+      body: "*"
+    };
+  }
+
+  // Returns one catalog entry together with copy statistics.
+  rpc GetBook(GetBookRequest) returns (Book) {
+    option (google.api.http) = {get: "/v1/books/{id}"};
+  }
+
+  // Returns a page of the catalog, optionally filtered by query.
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse) {
+    option (google.api.http) = {get: "/v1/books"};
+  }
+
+  // Applies a partial update: only the fields present in the request change.
+  rpc UpdateBook(UpdateBookRequest) returns (Book) {
+    option (google.api.http) = {
+      patch: "/v1/books/{id}"
+      body: "*"
+    };
+  }
+
+  // Deletes a book that has no copies on loan.
+  rpc DeleteBook(DeleteBookRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/books/{id}"};
+  }
+
+  // Registers a physical copy of the book. Barcode must be unique.
+  rpc AddBookCopy(AddBookCopyRequest) returns (BookCopy) {
+    option (google.api.http) = {
+      post: "/v1/books/{book_id}/copies"
+      body: "*"
+    };
+  }
+
+  // Returns the copy inventory of the book.
+  rpc ListBookCopies(ListBookCopiesRequest) returns (ListBookCopiesResponse) {
+    option (google.api.http) = {get: "/v1/books/{book_id}/copies"};
+  }
+
+  // Marks the first available copy of the book as ON_LOAN.
+  // The book id travels in the URL, the request has no body.
+  rpc BorrowBookCopy(BorrowBookCopyRequest) returns (BookCopy) {
+    option (google.api.http) = {post: "/v1/books/{book_id}/borrow"};
+  }
+
+  // Marks the copy as AVAILABLE again.
+  // The copy id travels in the URL, the request has no body.
+  rpc ReturnBookCopy(ReturnBookCopyRequest) returns (BookCopy) {
+    option (google.api.http) = {post: "/v1/copies/{copy_id}/return"};
+  }
 }

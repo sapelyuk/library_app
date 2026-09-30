@@ -15,8 +15,8 @@ import (
 	"library_app/book-service/internal/repository/memory"
 )
 
-// Проверка контрактов на уровне самого хранилища: уникальность индексов,
-// каскадное удаление, агрегаты и атомарность выдачи.
+// Contract checks at the storage level: index uniqueness, cascade delete,
+// aggregates and atomic issuing.
 
 var (
 	_ repository.BookRepository = (*memory.Store)(nil)
@@ -51,12 +51,12 @@ func TestBookCRUD(t *testing.T) {
 		t.Fatalf("Create: unexpected error: %v", err)
 	}
 
-	// Повторный ISBN того же экземпляра допустим, чужого — нет.
+	// The ISBN index is unique: reusing it for another book is rejected.
 	if err := store.Create(ctx, newBook(t, "978-0-13-419044-0", "Other")); !errors.Is(err, domain.ErrISBNAlreadyExists) {
 		t.Fatalf("want %v, got %v", domain.ErrISBNAlreadyExists, err)
 	}
 
-	// Хранилище отдаёт копию: мутация результата не должна портить данные.
+	// The store returns a copy: mutating the result must not corrupt the data.
 	fetched, err := store.GetByID(ctx, book.ID)
 	if err != nil {
 		t.Fatalf("GetByID: unexpected error: %v", err)
@@ -82,7 +82,7 @@ func TestBookCRUD(t *testing.T) {
 		t.Fatalf("ISBN index points to %s, want %s", byISBN.ID, book.ID)
 	}
 
-	// Обновление несуществующей книги.
+	// Updating a non-existent book.
 	if err := store.Update(ctx, newBook(t, "978-0-306-40615-7", "Ghost")); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("want %v, got %v", domain.ErrNotFound, err)
 	}
@@ -144,7 +144,7 @@ func TestListPagination(t *testing.T) {
 		t.Fatalf("expected page of 2, got %d", len(books))
 	}
 
-	// Страница не должна пересекаться с первой.
+	// The offset page must not overlap with the first one.
 	first, _, err := store.List(ctx, domain.BookFilter{Limit: 1})
 	if err != nil {
 		t.Fatalf("List: unexpected error: %v", err)
@@ -177,15 +177,15 @@ func TestCopyInventory(t *testing.T) {
 		t.Fatalf("Create: unexpected error: %v", err)
 	}
 
-	// Экземпляр несуществующей книги.
+	// A copy of a non-existent book.
 	if err := store.CreateCopy(ctx, &domain.Copy{ID: uuid.New(), BookID: uuid.New(), Barcode: "X"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("want %v, got %v", domain.ErrNotFound, err)
 	}
 
 	var ids []uuid.UUID
 
-	// Порядок выдачи определяется временем регистрации, поэтому задаём его явно:
-	// time.Now() в домене имеет разрешение часов ОС и в быстрой цикле даёт коллизии.
+	// The borrow order follows the registration time, so we set it explicitly:
+	// time.Now() in the domain has OS clock resolution and collides in a tight loop.
 	base := time.Now().UTC()
 
 	for i := range 3 {
@@ -203,7 +203,7 @@ func TestCopyInventory(t *testing.T) {
 		ids = append(ids, item.ID)
 	}
 
-	// Дубликат штрихкода.
+	// Duplicate barcode.
 	dup, err := domain.NewCopy(book.ID, "BC-000")
 	if err != nil {
 		t.Fatalf("NewCopy: unexpected error: %v", err)
@@ -235,7 +235,7 @@ func TestCopyInventory(t *testing.T) {
 		t.Fatalf("Stats: unexpected error: %v", err)
 	}
 
-	// Потерянный экземпляр учитывается в Total, но не в Available.
+	// A lost copy counts into Total but not into Available.
 	if stats.Total != 3 || stats.Available != 2 {
 		t.Fatalf("lost copy must stay out of Available: %+v", stats)
 	}
@@ -249,7 +249,7 @@ func TestCopyInventory(t *testing.T) {
 		t.Fatalf("expected 3 copies, got %d", len(copies))
 	}
 
-	// Выдача идёт по одному, последний доступный — BC-001 (BC-002 потерян).
+	// Copies are issued one by one; the last available one is BC-001 (BC-002 is lost).
 	first, err := store.AcquireAvailable(ctx, book.ID)
 	if err != nil {
 		t.Fatalf("AcquireAvailable: unexpected error: %v", err)
@@ -272,7 +272,7 @@ func TestCopyInventory(t *testing.T) {
 		t.Fatalf("want %v, got %v", domain.ErrNoAvailableCopies, err)
 	}
 
-	// Каскад: удаление книги забирает её экземпляры.
+	// Cascade: deleting a book takes its copies with it.
 	if err := store.Delete(ctx, book.ID); err != nil {
 		t.Fatalf("Delete: unexpected error: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestAcquireAvailableIsAtomic(t *testing.T) {
 		}
 	}
 
-	// Параллельная выдача не должна отдавать один экземпляр дважды.
+	// Parallel issuing must not hand out the same copy twice.
 	const workers = 16
 
 	var (
@@ -354,7 +354,7 @@ func TestAcquireAvailableIsAtomic(t *testing.T) {
 	}
 }
 
-// isbn13 собирает валидный ISBN-13 по счётчику: 12 цифр + контрольная.
+// isbn13 builds a valid ISBN-13 from a counter: 12 digits plus a check digit.
 func isbn13(seq int) string {
 	base := fmt.Sprintf("978%09d", seq)
 

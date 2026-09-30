@@ -10,7 +10,7 @@ import (
 	"library_app/book-service/internal/domain"
 )
 
-// Валидные номера: контрольные цифры посчитаны по алгоритмам ISBN-10/ISBN-13.
+// Valid numbers: the check digits are computed with the ISBN-10/ISBN-13 algorithms.
 const (
 	validISBN13 = "978-0-306-40615-7"
 	validISBN10 = "0-306-40615-2"
@@ -119,11 +119,11 @@ func TestBookApply(t *testing.T) {
 
 	updatedAt := book.UpdatedAt
 
-	// Гарантируем, что часы точно сделают тик между снимком и Apply,
-	// иначе строгая проверка After() нестабильна на быстрых машинах.
+	// Make sure the clock really ticks between the snapshot and Apply,
+	// otherwise the strict After() check is flaky on fast machines.
 	time.Sleep(time.Millisecond)
 
-	// Обновляется только переданное поле, остальные остаются как были.
+	// Only the supplied field is updated, the rest stay as they were.
 	if err := book.Apply(domain.BookUpdate{Title: ptr("Updated")}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestBookApply(t *testing.T) {
 		t.Fatal("expected UpdatedAt to move forward")
 	}
 
-	// ISBN проходит ту же валидацию, что и при создании.
+	// ISBN runs through the same validation as at creation time.
 	if err := book.Apply(domain.BookUpdate{ISBN: ptr(validISBN10)}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestCopyStatusTransitions(t *testing.T) {
 			t.Fatalf("want %q, got %q", domain.CopyStatusOnLoan, item.Status)
 		}
 
-		// Выдать тот же экземпляр повторно нельзя.
+		// The same copy cannot be borrowed twice.
 		if err := item.MarkOnLoan(); !errors.Is(err, domain.ErrCopyNotAvailable) {
 			t.Fatalf("want %v, got %v", domain.ErrCopyNotAvailable, err)
 		}
@@ -278,7 +278,7 @@ func TestCopyStatusTransitions(t *testing.T) {
 			t.Fatalf("want %q, got %q", domain.CopyStatusAvailable, item.Status)
 		}
 
-		// Возврат невзятого экземпляра — тоже ошибка.
+		// Returning a copy that was never borrowed is also an error.
 		if err := item.Return(); !errors.Is(err, domain.ErrCopyNotAvailable) {
 			t.Fatalf("want %v, got %v", domain.ErrCopyNotAvailable, err)
 		}
@@ -307,7 +307,7 @@ func TestCopyStatusTransitions(t *testing.T) {
 func TestPublishedYearBoundary(t *testing.T) {
 	t.Parallel()
 
-	// 1445 — первая печатная книга, нижняя граница включительно.
+	// 1445 — the first printed book, the lower bound is inclusive.
 	if _, err := domain.NewBook(domain.NewBookParams{
 		Title: "t", Author: "a", ISBN: validISBN13, PublishedYear: 1445,
 	}); err != nil {
@@ -320,7 +320,7 @@ func TestPublishedYearBoundary(t *testing.T) {
 		t.Fatalf("want %v, got %v", domain.ErrInvalidPublishedYear, err)
 	}
 
-	// Следующий год допустим (предзаказ), ещё через год — уже нет.
+	// The next year is allowed (pre-order), the one after that is not.
 	next := int32(time.Now().UTC().Year() + 1)
 
 	if _, err := domain.NewBook(domain.NewBookParams{

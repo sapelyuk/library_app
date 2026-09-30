@@ -19,7 +19,7 @@ const (
 	isbnB = "978-0-306-40615-7"
 )
 
-// newService собирает сервис поверх in-memory хранилища.
+// newService wires the service on top of the in-memory store.
 func newService(t *testing.T) *service.BookService {
 	t.Helper()
 
@@ -62,7 +62,7 @@ func TestCreateBookThenGet(t *testing.T) {
 		t.Fatalf("unexpected title: %q", view.Book.Title)
 	}
 
-	// У новой книги экземпляров ещё нет.
+	// A brand new book has no copies yet.
 	if view.Stats.Total != 0 || view.Stats.Available != 0 {
 		t.Fatalf("expected empty inventory, got %+v", view.Stats)
 	}
@@ -111,7 +111,7 @@ func TestInventoryLifecycle(t *testing.T) {
 		t.Fatalf("AddBookCopy: unexpected error: %v", err)
 	}
 
-	// Дубликат штрихкода недопустим даже для другой книги.
+	// A duplicate barcode is rejected even for a different book.
 	other := createBook(t, svc, isbnB, "Refactoring")
 	if _, err := svc.AddBookCopy(ctx, other.ID, "BC-000001"); !errors.Is(err, domain.ErrBarcodeAlreadyExists) {
 		t.Fatalf("want %v, got %v", domain.ErrBarcodeAlreadyExists, err)
@@ -131,7 +131,7 @@ func TestInventoryLifecycle(t *testing.T) {
 		t.Fatalf("BorrowBookCopy: unexpected error: %v", err)
 	}
 
-	// Выдаётся один из зарегистрированных экземпляров книги.
+	// One of the registered copies of the book is issued.
 	if lent.ID != first.ID && lent.ID != second.ID {
 		t.Fatalf("borrowed copy %s does not belong to the book", lent.ID)
 	}
@@ -149,7 +149,7 @@ func TestInventoryLifecycle(t *testing.T) {
 		t.Fatalf("expected 1 available / 1 on loan, got %+v", view.Stats)
 	}
 
-	// Выдачу нельзя повторить для уже занятого экземпляра — но книга ещё есть.
+	// Borrowing an already taken copy again is not allowed — but the book still has one.
 	if _, err := svc.BorrowBookCopy(ctx, book.ID); err != nil {
 		t.Fatalf("BorrowBookCopy: unexpected error: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestInventoryLifecycle(t *testing.T) {
 		t.Fatalf("expected %q, got %q", domain.CopyStatusAvailable, returned.Status)
 	}
 
-	// Возврат уже возвращённого экземпляра — ошибка предусловия.
+	// Returning an already returned copy is a precondition error.
 	if _, err := svc.ReturnBookCopy(ctx, lent.ID); !errors.Is(err, domain.ErrCopyNotAvailable) {
 		t.Fatalf("want %v, got %v", domain.ErrCopyNotAvailable, err)
 	}
@@ -206,7 +206,7 @@ func TestDeleteBookGuardsActiveLoans(t *testing.T) {
 		t.Fatalf("want %v, got %v", domain.ErrNotFound, err)
 	}
 
-	// ISBN освобождается вместе с книгой.
+	// The ISBN is released together with the book.
 	if _, err := svc.CreateBook(ctx, service.CreateBookInput{
 		ISBN: isbnA, Title: "Again", Author: "Author", PublishedYear: 2022,
 	}); err != nil {
@@ -237,12 +237,12 @@ func TestUpdateBookPartial(t *testing.T) {
 		t.Fatalf("title must stay: %q", view.Book.Title)
 	}
 
-	// Пустой запрос обновления ничего не меняет.
+	// An empty update changes nothing.
 	if _, err := svc.UpdateBook(ctx, book.ID, domain.BookUpdate{}); err != nil {
 		t.Fatalf("UpdateBook: unexpected error: %v", err)
 	}
 
-	// Несуществующая книга.
+	// Unknown book.
 	if _, err := svc.UpdateBook(ctx, uuid.New(), domain.BookUpdate{}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("want %v, got %v", domain.ErrNotFound, err)
 	}
@@ -266,7 +266,7 @@ func TestListBooksSearchAndPaging(t *testing.T) {
 		t.Fatalf("expected single match, got total=%d len=%d", total, len(views))
 	}
 
-	// Поиск по автору, заданному createBook.
+	// Search by the author that createBook sets.
 	_, total, err = svc.ListBooks(ctx, domain.BookFilter{Query: "AUTHOR"})
 	if err != nil {
 		t.Fatalf("ListBooks: unexpected error: %v", err)
@@ -276,7 +276,7 @@ func TestListBooksSearchAndPaging(t *testing.T) {
 		t.Fatalf("case-insensitive author search expected 2, got %d", total)
 	}
 
-	// Страница короче общего числа совпадений.
+	// A page shorter than the total number of matches.
 	views, total, err = svc.ListBooks(ctx, domain.BookFilter{Limit: 1})
 	if err != nil {
 		t.Fatalf("ListBooks: unexpected error: %v", err)
@@ -290,7 +290,7 @@ func TestListBooksSearchAndPaging(t *testing.T) {
 		t.Fatalf("limit ignored, got %d items", len(views))
 	}
 
-	// Смещение за концом выборки — пустая страница без ошибки.
+	// An offset past the end of the result set gives an empty page without an error.
 	views, total, err = svc.ListBooks(ctx, domain.BookFilter{Offset: 10})
 	if err != nil {
 		t.Fatalf("ListBooks: unexpected error: %v", err)
@@ -307,7 +307,7 @@ func TestListBooksCapsLimit(t *testing.T) {
 	ctx := context.Background()
 	svc := newService(t)
 
-	// Больше MaxListLimit книг, чтобы проверить усечение страницы.
+	// More than MaxListLimit books, to check that the page is truncated.
 	for i := range service.MaxListLimit + 5 {
 		createBook(t, svc, isbn13(i), "Book")
 	}
@@ -325,7 +325,7 @@ func TestListBooksCapsLimit(t *testing.T) {
 		t.Fatalf("limit must be capped at %d, got %d", service.MaxListLimit, len(views))
 	}
 
-	// Отрицательный limit трактуется как «по умолчанию», а не как «без лимита».
+	// A negative limit means "default", not "no limit".
 	views, _, err = svc.ListBooks(ctx, domain.BookFilter{Limit: -5})
 	if err != nil {
 		t.Fatalf("ListBooks: unexpected error: %v", err)
@@ -336,7 +336,7 @@ func TestListBooksCapsLimit(t *testing.T) {
 	}
 }
 
-// isbn13 собирает валидный ISBN-13 по счётчику: 12 цифр + контрольная.
+// isbn13 builds a valid ISBN-13 from a counter: 12 digits plus a check digit.
 func isbn13(seq int) string {
 	base := fmt.Sprintf("978%09d", seq)
 

@@ -36,15 +36,29 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Book catalog and copy inventory of the library.
+//
+// Every RPC is also exposed as a REST endpoint through grpc-gateway,
+// which is what the Swagger UI at /swagger/ exercises.
 type BookServiceClient interface {
+	// Adds an edition to the catalog. ISBN must be valid and unique.
 	CreateBook(ctx context.Context, in *CreateBookRequest, opts ...grpc.CallOption) (*Book, error)
+	// Returns one catalog entry together with copy statistics.
 	GetBook(ctx context.Context, in *GetBookRequest, opts ...grpc.CallOption) (*Book, error)
+	// Returns a page of the catalog, optionally filtered by query.
 	ListBooks(ctx context.Context, in *ListBooksRequest, opts ...grpc.CallOption) (*ListBooksResponse, error)
+	// Applies a partial update: only the fields present in the request change.
 	UpdateBook(ctx context.Context, in *UpdateBookRequest, opts ...grpc.CallOption) (*Book, error)
+	// Deletes a book that has no copies on loan.
 	DeleteBook(ctx context.Context, in *DeleteBookRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Registers a physical copy of the book. Barcode must be unique.
 	AddBookCopy(ctx context.Context, in *AddBookCopyRequest, opts ...grpc.CallOption) (*BookCopy, error)
+	// Returns the copy inventory of the book.
 	ListBookCopies(ctx context.Context, in *ListBookCopiesRequest, opts ...grpc.CallOption) (*ListBookCopiesResponse, error)
+	// Marks the first available copy of the book as ON_LOAN.
+	// The book id travels in the URL, the request has no body.
 	BorrowBookCopy(ctx context.Context, in *BorrowBookCopyRequest, opts ...grpc.CallOption) (*BookCopy, error)
+	// Marks the copy as AVAILABLE again.
+	// The copy id travels in the URL, the request has no body.
 	ReturnBookCopy(ctx context.Context, in *ReturnBookCopyRequest, opts ...grpc.CallOption) (*BookCopy, error)
 }
 
@@ -151,15 +165,29 @@ func (c *bookServiceClient) ReturnBookCopy(ctx context.Context, in *ReturnBookCo
 // for forward compatibility.
 //
 // Book catalog and copy inventory of the library.
+//
+// Every RPC is also exposed as a REST endpoint through grpc-gateway,
+// which is what the Swagger UI at /swagger/ exercises.
 type BookServiceServer interface {
+	// Adds an edition to the catalog. ISBN must be valid and unique.
 	CreateBook(context.Context, *CreateBookRequest) (*Book, error)
+	// Returns one catalog entry together with copy statistics.
 	GetBook(context.Context, *GetBookRequest) (*Book, error)
+	// Returns a page of the catalog, optionally filtered by query.
 	ListBooks(context.Context, *ListBooksRequest) (*ListBooksResponse, error)
+	// Applies a partial update: only the fields present in the request change.
 	UpdateBook(context.Context, *UpdateBookRequest) (*Book, error)
+	// Deletes a book that has no copies on loan.
 	DeleteBook(context.Context, *DeleteBookRequest) (*emptypb.Empty, error)
+	// Registers a physical copy of the book. Barcode must be unique.
 	AddBookCopy(context.Context, *AddBookCopyRequest) (*BookCopy, error)
+	// Returns the copy inventory of the book.
 	ListBookCopies(context.Context, *ListBookCopiesRequest) (*ListBookCopiesResponse, error)
+	// Marks the first available copy of the book as ON_LOAN.
+	// The book id travels in the URL, the request has no body.
 	BorrowBookCopy(context.Context, *BorrowBookCopyRequest) (*BookCopy, error)
+	// Marks the copy as AVAILABLE again.
+	// The copy id travels in the URL, the request has no body.
 	ReturnBookCopy(context.Context, *ReturnBookCopyRequest) (*BookCopy, error)
 	mustEmbedUnimplementedBookServiceServer()
 }
