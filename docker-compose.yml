@@ -1,0 +1,29 @@
+# Local development infrastructure.
+# Message broker chosen in ADR-0001 (docs/adr/0001-message-broker.md).
+#
+#   docker compose up -d        # start
+#   docker compose logs -f rabbitmq
+#   docker compose down -v      # stop and remove the volume
+
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: library-rabbitmq
+    hostname: library-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP 0-9-1, used by the services
+      - "15672:15672"  # management UI, http://localhost:15672
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  rabbitmq-data:
