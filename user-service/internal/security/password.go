@@ -226,5 +226,11 @@ func decodeHash(encoded string) (params Parameters, salt, key []byte, err error)
 		return params, nil, nil, ErrInvalidHash
 	}
 
+	// The PHC string carries m, t and p only, so the key and the salt lengths
+	// are taken from the decoded values. Without this a hash produced with a
+	// non default profile would derive a key of the wrong size and never verify.
+	params.KeyLength = uint32(len(key))
+	params.SaltLength = uint32(len(salt))
+
 	return params, salt, key, nil
 }
