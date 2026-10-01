@@ -20,7 +20,10 @@ Book Service дополнительно поднимает HTTP-слой для 
 
 ## Паттерны взаимодействия:
 - Синхронно: gRPC между сервисами (быстро, типизированно)
-- Асинхронно: NATS/Kafka для событий (`book.borrowed`, `loan.overdue`)
+- Асинхронно: **RabbitMQ** для событий (`book.borrowed`, `loan.overdue`) —
+  выбор зафиксирован в `docs/adr/0001-message-broker.md`: topic exchange
+  `library.events`, routing key = тип события, publisher confirms + ручной ack,
+  отложенные доставки через TTL + dead-letter exchange
 - Обнаружение сервисов: Consul или Kubernetes DNS
 - Хранилище: отдельный PostgreSQL на каждый сервис (паттерн database-per-service)
 
@@ -38,6 +41,7 @@ Book Service дополнительно поднимает HTTP-слой для 
 | Loan / Notification Service, API Gateway               | не начато                                              |
 | Межсервисные gRPC-клиенты, события, discovery          | не начато (User Service отдаёт `AuthenticateToken` для будущего gateway) |
 | CI, контейнеризация                                    | не начато                                              |
+| Брокер сообщений: выбор и локальная инфраструктура    | готово: ADR-0001 (RabbitMQ), `docker-compose.yml`; реализация — #14 |
 
 Локальный запуск Book Service:
 
@@ -66,6 +70,15 @@ go build ./... && go vet ./... && go test ./...
 ./scripts/gen_proto.ps1
 ```
 
+Локальная инфраструктура (брокер из ADR-0001):
+
+```bash
+docker compose up -d      # RabbitMQ: AMQP :5672, management UI http://localhost:15672
+docker compose down -v    # остановить и удалить volume
+```
+
+Учётные данные брокера берутся из `RABBITMQ_USER`/`RABBITMQ_PASS` (по умолчанию `guest`).
+
 ## Структура проекта (фактическая)
 
 ```
@@ -73,6 +86,10 @@ library_app/
 ├── go.work              # воркспейс: ./book-service, ./user-service, ./pkg
 ├── README.md            # этот файл
 ├── KODA.md              # контекст репозитория для AI-сессий
+├── docker-compose.yml   # локальная инфраструктура: RabbitMQ (:5672, UI :15672)
+├── docs/
+│   └── adr/
+│       └── 0001-message-broker.md  # решение по брокеру сообщений
 ├── scripts/
 │   └── gen_proto.ps1    # кодогенерация protoc + go/go-grpc/grpc-gateway/openapiv2
 ├── third_party/         # vendored .proto includes (google/api, openapiv2 options)
