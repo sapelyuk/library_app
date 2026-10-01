@@ -1,7 +1,7 @@
 go 1.26.6
 
 use (
-	./book-service
 	./pkg
-	./user-service
+	./services/book-service
+	./services/user-service
 )

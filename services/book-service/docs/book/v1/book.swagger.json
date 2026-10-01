@@ -1,0 +1,516 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Book Service API",
+    "description": "Catalog of books and inventory of physical copies. REST endpoints are proxied to book.v1.BookService over gRPC.",
+    "version": "1.0",
+    "contact": {
+      "name": "Smart Library"
+    }
+  },
+  "tags": [
+    {
+      "name": "BookService",
+      "description": "Book catalog and copy inventory of the library.\n\nEvery RPC is also exposed as a REST endpoint through grpc-gateway,\nwhich is what the Swagger UI at /swagger/ exercises."
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/books": {
+      "get": {
+        "summary": "Returns a page of the catalog, optionally filtered by query.",
+        "operationId": "BookService_ListBooks",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListBooksResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "query",
+            "description": "Free text filter matched against title, author and ISBN.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "limit",
+            "description": "Page size, 0 means the service default (20), capped at 100.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "offset",
+            "description": "Number of entries to skip.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      },
+      "post": {
+        "summary": "Adds an edition to the catalog. ISBN must be valid and unique.",
+        "operationId": "BookService_CreateBook",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Book"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateBookRequest"
+            }
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      }
+    },
+    "/v1/books/{bookId}/borrow": {
+      "post": {
+        "summary": "Marks the first available copy of the book as ON_LOAN.\nThe book id travels in the URL, the request has no body.",
+        "operationId": "BookService_BorrowBookCopy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BookCopy"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      }
+    },
+    "/v1/books/{bookId}/copies": {
+      "get": {
+        "summary": "Returns the copy inventory of the book.",
+        "operationId": "BookService_ListBookCopies",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListBookCopiesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      },
+      "post": {
+        "summary": "Registers a physical copy of the book. Barcode must be unique.",
+        "operationId": "BookService_AddBookCopy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BookCopy"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "bookId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/BookServiceAddBookCopyBody"
+            }
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      }
+    },
+    "/v1/books/{id}": {
+      "get": {
+        "summary": "Returns one catalog entry together with copy statistics.",
+        "operationId": "BookService_GetBook",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Book"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      },
+      "delete": {
+        "summary": "Deletes a book that has no copies on loan.",
+        "operationId": "BookService_DeleteBook",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      },
+      "patch": {
+        "summary": "Applies a partial update: only the fields present in the request change.",
+        "operationId": "BookService_UpdateBook",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Book"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/BookServiceUpdateBookBody"
+            }
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      }
+    },
+    "/v1/copies/{copyId}/return": {
+      "post": {
+        "summary": "Marks the copy as AVAILABLE again.\nThe copy id travels in the URL, the request has no body.",
+        "operationId": "BookService_ReturnBookCopy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BookCopy"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "copyId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "BookServiceAddBookCopyBody": {
+      "type": "object",
+      "properties": {
+        "barcode": {
+          "type": "string"
+        }
+      }
+    },
+    "BookServiceUpdateBookBody": {
+      "type": "object",
+      "properties": {
+        "isbn": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "publishedYear": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "description": "Only the fields present in the request are updated."
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1Book": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "isbn": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "publishedYear": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "totalCopies": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "availableCopies": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Catalog entry describing a book edition."
+    },
+    "v1BookCopy": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "bookId": {
+          "type": "string"
+        },
+        "barcode": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/v1CopyStatus"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Physical copy of a book identified by barcode."
+    },
+    "v1CopyStatus": {
+      "type": "string",
+      "enum": [
+        "COPY_STATUS_UNSPECIFIED",
+        "COPY_STATUS_AVAILABLE",
+        "COPY_STATUS_ON_LOAN",
+        "COPY_STATUS_LOST",
+        "COPY_STATUS_MAINTENANCE"
+      ],
+      "default": "COPY_STATUS_UNSPECIFIED",
+      "description": "Status of a single physical copy of a book."
+    },
+    "v1CreateBookRequest": {
+      "type": "object",
+      "properties": {
+        "isbn": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "publishedYear": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1ListBookCopiesResponse": {
+      "type": "object",
+      "properties": {
+        "copies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1BookCopy"
+          }
+        }
+      }
+    },
+    "v1ListBooksResponse": {
+      "type": "object",
+      "properties": {
+        "books": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Book"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    }
+  }
+}

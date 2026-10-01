@@ -1,0 +1,678 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "User Service API",
+    "description": "Accounts of readers and librarians, authentication and sessions. REST endpoints are proxied to user.v1.UserService over gRPC. Every method except Register, Login and AuthenticateToken expects the header 'authorization: Bearer \u003ctoken\u003e' with the token returned by Login.",
+    "version": "1.0",
+    "contact": {
+      "name": "Smart Library"
+    }
+  },
+  "tags": [
+    {
+      "name": "UserService",
+      "description": "Accounts of readers and librarians, authentication and sessions.\n\nEvery RPC except AuthenticateToken is also exposed as a REST endpoint\nthrough grpc-gateway, which is what the Swagger UI at /swagger/ exercises.\nThe methods annotated with BearerAuth refuse a request without a valid\ntoken with UNAUTHENTICATED, and a request whose role check fails with\nPERMISSION_DENIED."
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/auth/login": {
+      "post": {
+        "summary": "Exchanges credentials for a bearer token. Public method: wrong or\ndeactivated credentials are answered with UNAUTHENTICATED.",
+        "operationId": "UserService_Login",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Session"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1LoginRequest"
+            }
+          }
+        ],
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "summary": "Revokes the session the request is authenticated with.",
+        "operationId": "UserService_Logout",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/auth/me": {
+      "get": {
+        "summary": "Returns the account of the caller.",
+        "operationId": "UserService_GetCurrentUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1User"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/auth/register": {
+      "post": {
+        "summary": "Registers a reader. Public method: e-mail must be valid and unused.",
+        "operationId": "UserService_Register",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1User"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "Self service registration, the role is always ROLE_READER.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RegisterRequest"
+            }
+          }
+        ],
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/v1/users": {
+      "get": {
+        "summary": "Returns a page of accounts. Librarian only.",
+        "operationId": "UserService_ListUsers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListUsersResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "query",
+            "description": "Free text filter matched against full name, email and phone.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "role",
+            "description": "Restrict the answer to one role, UNSPECIFIED means every role.\n\n - ROLE_READER: Reader: borrows books, manages only own account.\n - ROLE_LIBRARIAN: Librarian: manages the catalog and the accounts of readers.",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "ROLE_UNSPECIFIED",
+              "ROLE_READER",
+              "ROLE_LIBRARIAN"
+            ],
+            "default": "ROLE_UNSPECIFIED"
+          },
+          {
+            "name": "status",
+            "description": "Restrict the answer to one status, UNSPECIFIED means every status.\n\n - USER_STATUS_ACTIVE: The account may sign in.\n - USER_STATUS_DEACTIVATED: Blocked by a librarian: signing in is refused, the data is kept.",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "USER_STATUS_UNSPECIFIED",
+              "USER_STATUS_ACTIVE",
+              "USER_STATUS_DEACTIVATED"
+            ],
+            "default": "USER_STATUS_UNSPECIFIED"
+          },
+          {
+            "name": "limit",
+            "description": "Page size, 0 means the service default (20), capped at 100.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "offset",
+            "description": "Number of entries to skip.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Creates an account of any role. Librarian only.",
+        "operationId": "UserService_CreateUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1User"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "Account created by a librarian, the role is chosen explicitly.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateUserRequest"
+            }
+          }
+        ],
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/{id}": {
+      "get": {
+        "summary": "Returns one account: own account for a reader, any account for a\nlibrarian.",
+        "operationId": "UserService_GetUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1User"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "summary": "Applies a partial update of an account.",
+        "operationId": "UserService_UpdateUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1User"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/UserServiceUpdateUserBody"
+            }
+          }
+        ],
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/{id}/deactivate": {
+      "post": {
+        "summary": "Blocks an account and revokes all of its sessions. Librarian only.",
+        "operationId": "UserService_DeactivateUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1User"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/{id}/password": {
+      "post": {
+        "summary": "Replaces a password and revokes every other session of the account.",
+        "operationId": "UserService_ChangePassword",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/UserServiceChangePasswordBody"
+            }
+          }
+        ],
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/users/{id}/restore": {
+      "post": {
+        "summary": "Unblocks an account. Librarian only.",
+        "operationId": "UserService_RestoreUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1User"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserService"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "UserServiceChangePasswordBody": {
+      "type": "object",
+      "properties": {
+        "currentPassword": {
+          "type": "string"
+        },
+        "newPassword": {
+          "type": "string"
+        }
+      },
+      "description": "Replaces the password of an account. The owner has to prove the current\npassword, a librarian may set a new one without it."
+    },
+    "UserServiceUpdateUserBody": {
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/definitions/v1Role"
+        },
+        "status": {
+          "$ref": "#/definitions/v1UserStatus"
+        }
+      },
+      "description": "Only the fields present in the request are updated. A reader may change own\nfull name and phone; changing the email, the role or the status needs a\nlibrarian."
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1CreateUserRequest": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "fullName": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/definitions/v1Role"
+        }
+      },
+      "description": "Account created by a librarian, the role is chosen explicitly."
+    },
+    "v1ListUsersResponse": {
+      "type": "object",
+      "properties": {
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1User"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1LoginRequest": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        }
+      }
+    },
+    "v1RegisterRequest": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "fullName": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        }
+      },
+      "description": "Self service registration, the role is always ROLE_READER."
+    },
+    "v1Role": {
+      "type": "string",
+      "enum": [
+        "ROLE_UNSPECIFIED",
+        "ROLE_READER",
+        "ROLE_LIBRARIAN"
+      ],
+      "default": "ROLE_UNSPECIFIED",
+      "description": "Role of a user, ordered by growing privileges.\n\n - ROLE_READER: Reader: borrows books, manages only own account.\n - ROLE_LIBRARIAN: Librarian: manages the catalog and the accounts of readers."
+    },
+    "v1Session": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "Bearer token, send it as 'authorization: Bearer \u003ctoken\u003e'."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Session opened by Login. The token is returned once and stored as a hash."
+    },
+    "v1User": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "fullName": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/definitions/v1Role"
+        },
+        "status": {
+          "$ref": "#/definitions/v1UserStatus"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last successful sign in, absent while the account never signed in."
+        }
+      },
+      "description": "Account of a reader or a librarian. A password is never returned."
+    },
+    "v1UserStatus": {
+      "type": "string",
+      "enum": [
+        "USER_STATUS_UNSPECIFIED",
+        "USER_STATUS_ACTIVE",
+        "USER_STATUS_DEACTIVATED"
+      ],
+      "default": "USER_STATUS_UNSPECIFIED",
+      "description": "Lifecycle state of an account.\n\n - USER_STATUS_ACTIVE: The account may sign in.\n - USER_STATUS_DEACTIVATED: Blocked by a librarian: signing in is refused, the data is kept."
+    }
+  },
+  "securityDefinitions": {
+    "BearerAuth": {
+      "type": "apiKey",
+      "description": "Session token returned by Login, sent as 'Bearer \u003ctoken\u003e'.",
+      "name": "authorization",
+      "in": "header"
+    }
+  }
+}
