@@ -11,3 +11,11 @@ bin/
 
 # Local run logs captured when starting the services.
 *.log
+
+# Environment overrides (machine-specific secrets, never committed).
+# .env.example is a tracked template and must stay in the repository.
+.env
+.env.local
+*.env
+!.env.example
+

@@ -60,6 +60,12 @@ type appConfig struct {
 }
 
 func loadConfig() appConfig {
+	dsn, err := pkgconfig.RequireString("USER_SERVICE_DB_DSN")
+	if err != nil {
+		slog.Error("user-service: environment", "error", err)
+		os.Exit(1)
+	}
+
 	return appConfig{
 		grpcAddr:        pkgconfig.String("USER_SERVICE_GRPC_ADDR", ":8082"),
 		httpAddr:        pkgconfig.String("USER_SERVICE_HTTP_ADDR", ":8092"),
@@ -67,7 +73,7 @@ func loadConfig() appConfig {
 		logFormat:       pkgconfig.String("USER_SERVICE_LOG_FORMAT", "json"),
 		shutdownTimeout: pkgconfig.Duration("USER_SERVICE_SHUTDOWN_TIMEOUT", 15*time.Second),
 
-		dsn:        pkgconfig.String("USER_SERVICE_DB_DSN", defaultDSN()),
+		dsn:        dsn,
 		migrate:    pkgconfig.String("USER_SERVICE_DB_MIGRATE", "true") == "true",
 		sessionTTL: pkgconfig.Duration("USER_SERVICE_SESSION_TTL", 24*time.Hour),
 		minPassLen: pkgconfig.Int("USER_SERVICE_PASSWORD_MIN_LENGTH", 12),
@@ -78,12 +84,6 @@ func loadConfig() appConfig {
 		seedFullName: pkgconfig.String("USER_SERVICE_SEED_LIBRARIAN_FULL_NAME", "Head Librarian"),
 		seedPhone:    pkgconfig.String("USER_SERVICE_SEED_LIBRARIAN_PHONE", ""),
 	}
-}
-
-// defaultDSN keeps a local development run free of configuration. The database
-// and the role are the ones scripts/provision_db.ps1 creates.
-func defaultDSN() string {
-	return "host=127.0.0.1 port=5432 user=user_service password=user_service dbname=library_users sslmode=disable"
 }
 
 func main() {
