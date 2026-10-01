@@ -78,6 +78,15 @@ $env:PGPASSWORD='...'
 
 ## Запуск
 
+Перед запуском скопируйте корневой `.env.example` в `.env` и заполните реальные
+значения (файл `.env` не коммитится):
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Затем экспортируйте переменные в шелл или запустите сервис через IDE.
+
 ```bash
 cd user-service
 go run ./cmd/server
@@ -92,7 +101,7 @@ go run ./cmd/server
 | --- | --- | --- |
 | `USER_SERVICE_GRPC_ADDR` | `:8082` | адрес gRPC-сервера |
 | `USER_SERVICE_HTTP_ADDR` | `:8092` | адрес REST/Swagger-сервера |
-| `USER_SERVICE_DB_DSN` | `host=127.0.0.1 port=5432 user=user_service password=user_service dbname=library_users sslmode=disable` | строка подключения lib/pq |
+| `USER_SERVICE_DB_DSN` | *(обязательна)* | строка подключения lib/pq |
 | `USER_SERVICE_DB_MIGRATE` | `true` | применять миграции при старте |
 | `USER_SERVICE_SESSION_TTL` | `24h` | срок жизни bearer-токена |
 | `USER_SERVICE_PASSWORD_MIN_LENGTH` | `12` | минимальная длина пароля |
