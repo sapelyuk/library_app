@@ -1,3 +1,3 @@
-module library_app/pkg
+module github.com/sapelyuk/smart-library/pkg
 
 go 1.26
