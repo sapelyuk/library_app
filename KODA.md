@@ -5,7 +5,7 @@
 **library_app** — бэкенд для библиотечного приложения, реализованный как набор микросервисов на **Go (Golang)**. Реализовано: **Book Service полностью рабочий** (gRPC-API, REST и Swagger через grpc-gateway, домен, бизнес-логика, in-memory хранилище, тесты), **User Service рабочий** (gRPC-API, REST и Swagger, регистрация/вход, хеширование паролей, сессии, ролевая модель, PostgreSQL-хранилище, миграции, unit-тесты домена и security), плюс общий модуль `pkg` (logger, config). Остальные сервисы существуют только как строки в архитектурной таблице.
 
 - **Назначение:** каталог книг, учёт читателей и библиотекарей, выдача/возврат книг, уведомления о сроках возврата, единая точка входа для клиентов.
-- **Язык и стек:** Go (локально установлен `go1.26.6 windows/amd64`), gRPC, protobuf, `log/slog`, PostgreSQL (`database/sql` + `lib/pq`); Kafka и Consul/Kubernetes DNS — в планах.
+- **Язык и стек:** Go (локально установлен `go1.27.1 windows/amd64`), gRPC, protobuf, `log/slog`, PostgreSQL (`database/sql` + `lib/pq`); брокер выбран — RabbitMQ (ADR-0001), discovery Consul/Kubernetes — в планах.
 - **Архитектурный стиль:** микросервисы с изолированным хранилищем на каждый сервис (паттерн *database-per-service*).
 - **Организация кода:** монорепо с Go-воркспейсом (`go.work`) для локальной разработки нескольких модулей одновременно.
 
@@ -22,7 +22,7 @@
 ## Паттерны взаимодействия
 
 - **Синхронная коммуникация:** gRPC между сервисами (быстро, типизированно).
-- **Асинхронная коммуникация:** NATS или Kafka для доменных событий (`book.borrowed`, `loan.overdue`).
+- **Асинхронная коммуникация:** RabbitMQ (topic exchange `library.events`, отложенная доставка через TTL+DLX для напоминаний о сроках возврата).
 - **Обнаружение сервисов:** Consul либо Kubernetes DNS.
 - **Хранилище:** отдельная база PostgreSQL на каждый сервис.
 
@@ -33,6 +33,9 @@ library_app/
 ├── go.work                      # воркспейс: ./book-service, ./pkg, ./user-service
 ├── README.md                    # архитектурная спецификация проекта
 ├── KODA.md                      # этот файл
+├── docker-compose.yml           # локальная инфраструктура: rabbitmq:4-management (:5672, :15672)
+├── docs/adr/
+│   └── 0001-message-broker.md   # ADR: выбор RabbitMQ, модель событий, гарантии доставки
 ├── scripts/
 │   └── gen_proto.ps1            # перегенерация кода (protoc + 4 плагина)
 ├── third_party/                 # внешние .proto: google/api, protoc-gen-openapiv2/options
@@ -86,8 +89,9 @@ library_app/
 | Хранилище User Service | PostgreSQL (`database/sql` + `lib/pq`), миграции применяются при старте |
 | Тесты User Service | домен и security — готово (PR #11); HTTP-слой — issue #3; сервис и репозиторий — нет |
 | Loan / Notification Service, API Gateway | нет (issues #9, #10) |
-| gRPC-клиенты между сервисами, события, discovery | нет; брокер выбран — **Kafka** (issue #7), discovery — issue #8 (`AuthenticateToken` User Service — подготовленная точка входа для gateway) |
+| gRPC-клиенты между сервисами, события, discovery | нет; брокер выбран — **RabbitMQ** (issue #7), discovery — issue #8 (`AuthenticateToken` User Service — подготовленная точка входа для gateway) |
 | CI, контейнеризация | нет (issues #5, #6) |
+| Событийная шина: выбор брокера | ADR-0001 (RabbitMQ), локальный RabbitMQ в `docker-compose.yml`; реализация — issue #14 |
 
 ## Ключевые файлы
 
@@ -106,6 +110,8 @@ library_app/
 - `user-service/internal/security/` — `password.go` (argon2id в PHC-формате, `DummyPasswordHash` для выравнивания времени входа) и `token.go` (случайный токен, в БД — SHA-256-хеш).
 - `user-service/internal/handler/interceptor.go` — извлечение Bearer-токена из metadata, публичные методы (`Register`, `Login`), кладо principal в контекст.
 - `user-service/migrations/` — `001_init.sql` в goose-формате + `migrations.go` с `//go:embed`; применяется `pkg/migrate` при старте.
+- `docs/adr/0001-message-broker.md` — решение по брокеру (RabbitMQ), сравнение с Kafka/NATS по критериям issue #7, модель событий: topic exchange `library.events`, routing key = `<aggregate>.<action>`, конверт `{event_id, event_type, occurred_at, payload}`, publisher confirms + ручной ack, отложенная доставка через `x-message-ttl` + `x-dead-letter-exchange`. Реализация — issue #14.
+- `docker-compose.yml` — локальный RabbitMQ (`rabbitmq:4-management`): AMQP `:5672`, management UI `:15672`, healthcheck `rabbitmq-diagnostics -q ping`, volume `rabbitmq-data`. Логин/пароль — из `RABBITMQ_USER`/`RABBITMQ_PASS` (по умолчанию `guest`). Контейнер только брокера: сервисы и их БД — задача issue #6.
 
 ## Сборка и запуск
 
@@ -120,12 +126,13 @@ library_app/
 | Запуск Book Service | `go run ./cmd/server` (gRPC на `:8081`, REST + Swagger на `:8091`) | `book-service/` |
 | Запуск User Service | `go run ./cmd/server` (gRPC на `:8082`, REST + Swagger на `:8092`), нужна PostgreSQL | `user-service/` |
 | Генерация gRPC-кода | `./scripts/gen_proto.ps1` | корень (PowerShell) |
+| Инфраструктура (брокер) | `docker compose up -d` (RabbitMQ `:5672`, UI `:15672`), `docker compose down -v` | корень |
 
 Текущее состояние проверок (последний запуск): build/vet — чисто во всех трёх модулях; тесты — `book-service` (23 теста + 27 подтестов) и `user-service` (41 тест + 127 подтестов: домен и security).
 
 Нюанс с `gofmt -l`: в рабочем дереве файлы `book-service/*` и `pkg/config`, `pkg/logger` идут с **CRLF** (включён `core.autocrlf=true`), поэтому `gofmt -l` помечает их все, хотя содержимое отформатировано корректно (`gofmt -d` показывает различие только в концах строк). Файлы, созданные с LF (`user-service/*`, `pkg/migrate`), помечены не быть. Гонять `gofmt -w .` ради этого не нужно — это перепишет конца строк во всех файлах модуля; форматировать стоит точечно, в файлах где реально менялся код.
 
-Окружение: `go1.26.6 windows/amd64`; `protoc 36.2` лежит локально в `tools/protoc/bin/protoc.exe` (в системном PATH его нет); плагины `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-grpc-gateway`, `protoc-gen-openapiv2` установлены в `C:\Users\yaros\go\bin`. GOPROXY доступен, Docker CLI есть, но демон обычно не запущен.
+Окружение: `go1.27.1 windows/amd64`; `protoc 36.2` лежит локально в `tools/protoc/bin/protoc.exe` (в системном PATH его нет); плагины `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-grpc-gateway`, `protoc-gen-openapiv2` установлены в `C:\Users\ThinkPro\go\bin`. GOPROXY доступен, Docker CLI есть, демон запущен. `gh` CLI v2.102.0 (авторизован, PATH через System).
 
 ## Правила разработки
 
