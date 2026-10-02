@@ -2,10 +2,10 @@
 
 ## Обзор проекта
 
-**Smart Library** — полнофункциональная платформа управления библиотекой: монорепо с бэкендом на Go (gRPC-микросервисы), планируемыми React-приложением и AI-рекомендациями книг на LLM/RAG. Реализовано: **Book Service полностью рабочий** (gRPC-API, REST и Swagger через grpc-gateway, домен, бизнес-логика, in-memory хранилище, тесты), **User Service рабочий** (gRPC-API, REST и Swagger, регистрация/вход, хеширование паролей, сессии, ролевая модель, PostgreSQL-хранилище, миграции, unit-тесты домена и security), плюс общий модуль `pkg` (logger, config). Остальные сервисы существуют только как строки в архитектурной таблице.
+**Smart Library** — полнофункциональная платформа управления библиотекой: монорепо с бэкендом на Go (gRPC-микросервисы), планируемым React-приложением и AI-рекомендациями книг на LLM/RAG. Реализовано: **Book Service полностью рабочий** (gRPC-API, REST и Swagger через grpc-gateway, домен, бизнес-логика, in-memory хранилище, тесты), **User Service рабочий** (gRPC-API, REST и Swagger, регистрация/вход, хеширование паролей, сессии, ролевая модель, PostgreSQL-хранилище, миграции, unit-тесты домена и security), **RAG-прототип AI-модуля работает** (n8n + pgvector + Gemini, 20 книг проиндексировано), плюс общий модуль `pkg` (logger, config). Остальные сервисы существуют только как строки в архитектурной таблице.
 
 - **Назначение:** каталог книг, учёт читателей и библиотекарей, выдача/возврат книг, уведомления о сроках возврата, единая точка входа для клиентов.
-- **Язык и стек:** Go (локально установлен `go1.27.1 windows/amd64`), gRPC, protobuf, `log/slog`, PostgreSQL (`database/sql` + `lib/pq`); брокер выбран — RabbitMQ (ADR-0001), discovery Consul/Kubernetes — в планах; фронтенд — React (в плане); AI-модуль — LLM/RAG (в плане).
+- **Язык и стек:** Go (локально установлен `go1.27.1 windows/amd64`), gRPC, protobuf, `log/slog`, PostgreSQL (`database/sql` + `lib/pq`); брокер выбран — RabbitMQ (ADR-0001), discovery Consul/Kubernetes — в планах; фронтенд — React (в плане); AI-модуль — LLM/RAG (прототип работает, Go-адаптер в плане).
 - **Архитектурный стиль:** микросервисы с изолированным хранилищем на каждый сервис (паттерн *database-per-service*).
 - **Организация кода:** монорепо с Go-воркспейсом (`go.work`) для локальной разработки нескольких модулей одновременно.
 
@@ -33,9 +33,9 @@
 | --- | --- | --- |
 | Бэкенд-сервисы | Book Service, User Service, RabbitMQ | ✅ готово |
 | Фронтенд | React SPA, потребляющая REST-контракты сервисов | 🔜 в плане |
-| AI-модуль | AI Service: ADR-0002 + прототип RAG в `services/ai-service/rag/` | 🟡 в работе (#22, #23) |
+| AI-модуль | AI Service: ADR-0002 + RAG-прототип (n8n + pgvector + Gemini) | 🟡 прототип работает (#22), Go-адаптер — #23 |
 | Discovery | Consul или Kubernetes DNS | 🔜 в плане |
-| CI/CD | GitHub Actions, контейнеризация | 🔜 в плане |
+| CI/CD | GitHub Actions (CI: build + test) | 🟡 CI готов (PR #28); контейнеризация — в плане |
 
 **Приоритет:** фронтенд → AI-модуль → discovery → CI/CD.
 
@@ -47,6 +47,7 @@ smart-library/
 ├── README.md                    # архитектурная спецификация проекта
 ├── KODA.md                      # этот файл
 ├── docker-compose.yml           # локальная инфраструктура: rabbitmq:4-management (:5672, :15672), pgvector (:5433)
+├── .github/workflows/ci.yml     # CI: build + test (три модуля, coverage в step summary)
 ├── docs/adr/
 │   ├── 0001-message-broker.md   # ADR: выбор RabbitMQ, модель событий, гарантии доставки
 │   └── 0002-ai-recommendation-architecture.md  # ADR: AI Service поверх n8n RAG, вариант C как развитие
@@ -85,9 +86,9 @@ smart-library/
     │   │   ├── repository/      # контракты + postgres/ (database/sql, lib/pq)
     │   │   └── handler/         # gRPC-адаптер, auth-интерцептор, gateway + Swagger UI
     │   └── migrations/          # 001_init.sql (users, sessions) + migrations.go (embed FS)
-    └── ai-service/              # архитектура ADR-0002, см. services/ai-service/README.md
+    └── ai-service/              # ADR-0002; RAG-прототип работает, см. services/ai-service/README.md
         ├── README.md            # статус, плановый контракт ai.v1.AiService
-        └── rag/                 # перенесённый прототип RAG (n8n workflow, pgvector схема, скрипты)
+        └── rag/                 # рабочий прототип RAG (n8n workflow, pgvector схема, скрипты)
             ├── README.md        # назначение, быстрый старт, env-переменные
             ├── docker-compose.yml  # отдельный pgvector-стек для работы с прототипом
             ├── db/              # 01-schema.sql (расширение, таблицы, функции), smoke-test, assertions
@@ -97,7 +98,7 @@ smart-library/
             └── docs/            # документация прототипа (ARCHITECTURE/SETUP/USAGE)
 ```
 
-`loan-service`, `notification-service` и `api-gateway` на диске **отсутствуют** — это следующая работа. Go-модуль `services/ai-service` ещё не создан (задача #23), в `rag/` — артефакты прототипа без Go-кода.
+`loan-service`, `notification-service` и `api-gateway` на диске **отсутствуют** — это следующая работа. Go-модуль `services/ai-service` ещё не создан (задача #23), но в `rag/` лежит **рабочий** RAG-прототип (без Go-кода): pgvector, схема, n8n workflow, проиндексировано 20 книг.
 
 ## Статус реализации
 
@@ -108,16 +109,19 @@ smart-library/
 | REST-слой и Swagger Book Service | готов: grpc-gateway на `:8091`, Swagger UI на `/swagger/` |
 | Хранилище Book Service | только in-memory (`internal/repository/memory`), данные живут до рестарта |
 | PostgreSQL-реализация репозитория Book Service | нет; миграция `001_init.sql` написана заранее |
+| Тесты Book Service | домен, сервис, in-memory репозиторий, HTTP-слой — готово (PR #27) |
 | User Service: контракт, домен, security, сервис, handler, запуск | готов, собирается и работает |
 | REST-слой и Swagger User Service | готов: grpc-gateway на `:8092`, Swagger UI на `/swagger/` |
 | Аутентификация и RBAC | готово: argon2id-пароли, bearer-токены (в БД только SHA-256-хеш), сессии с TTL, роли READER/LIBRARIAN, интерцептор + проверки в домене |
 | Хранилище User Service | PostgreSQL (`database/sql` + `lib/pq`), миграции применяются при старте |
-| Тесты User Service | домен и security — готово (PR #11); HTTP-слой — issue #3; сервис и репозиторий — нет |
+| Тесты User Service | домен, security (PR #11) и HTTP-слой (PR #26) — готово; сервис и репозиторий — нет |
 | Loan / Notification Service, API Gateway | нет (issues #9, #10) |
 | gRPC-клиенты между сервисами, события, discovery | нет; брокер выбран — **RabbitMQ** (issue #7), discovery — issue #8 (`AuthenticateToken` User Service — подготовленная точка входа для gateway) |
-| CI, контейнеризация | нет (issues #5, #6) |
+| CI | GitHub Actions: build + test с кэшем модулей и coverage в step summary (PR #28) |
+| Контейнеризация | нет (issue #6) |
 | Событийная шина: выбор брокера | ADR-0001 (RabbitMQ), локальный RabbitMQ в `docker-compose.yml`; реализация — issue #14 |
-| AI Service: архитектура и артефакты RAG | ADR-0002 (принято), прототип перенесён в `services/ai-service/rag/` (#22); pgvector в `docker-compose.yml` (`ai-rag-db`, `:5433`); Go-модуль — issue #23 |
+| AI Service: RAG-прототип | **работает end-to-end**: n8n + pgvector + Gemini, 20 книг проиндексировано, chat UI и webhook прошли smoke-тест; артефакты в `services/ai-service/rag/` (#22) |
+| AI Service: Go-адаптер `ai.v1.AiService` | не начато (issue #23); архитектура — ADR-0002; pgvector в `docker-compose.yml` (`ai-rag-db`, `:5433`) |
 
 ## Ключевые файлы
 
@@ -137,8 +141,8 @@ smart-library/
 - `user-service/internal/handler/interceptor.go` — извлечение Bearer-токена из metadata, публичные методы (`Register`, `Login`), кладо principal в контекст.
 - `user-service/migrations/` — `001_init.sql` в goose-формате + `migrations.go` с `//go:embed`; применяется `pkg/migrate` при старте.
 - `docs/adr/0001-message-broker.md` — решение по брокеру (RabbitMQ), сравнение с Kafka/NATS по критериям issue #7, модель событий: topic exchange `library.events`, routing key = `<aggregate>.<action>`, конверт `{event_id, event_type, occurred_at, payload}`, publisher confirms + ручной ack, отложенная доставка через `x-message-ttl` + `x-dead-letter-exchange`. Реализация — issue #14.
-- `docs/adr/0002-ai-recommendation-architecture.md` — решение по AI-модулю (принято): `ai-service` — тонкий Go-адаптер с контрактом `ai.v1.AiService` (Recommend, IngestBook), n8n RAG остаётся внутренней реализацией, каталог синхронизируется событиями `book.*` (источник истины — Book Service). Вариант C (нативный Go-порт RAG) — задокументированное направление развития. Задачи: #22 (перенос артефактов), #23 (реализация).
-- `services/ai-service/rag/` — перенесённый прототип RAG: `db/01-schema.sql` (pgvector: `books`, `book_chunks`, функции `match_book_chunks`/`get_book`/`list_books`/`delete_book`), `workflow/book-rag-system.json` (n8n), `scripts/` (start/verify/ingest), `samples/books.csv` (20 книг), `docs/` (ARCHITECTURE/SETUP/USAGE). секреты — только в `.env` (git-ignored), шаблон `.env.example`.
+- `docs/adr/0002-ai-recommendation-architecture.md` — решение по AI-модулю (принято): `ai-service` — тонкий Go-адаптер с контрактом `ai.v1.AiService` (Recommend, IngestBook), n8n RAG остаётся внутренней реализацией, каталог синхронизируется событиями `book.*` (источник истины — Book Service). Вариант C (нативный Go-порт RAG) — задокументированное направление развития. Задачи: #22 (перенос артефактов, готово), #23 (реализация Go-адаптера).
+- `services/ai-service/rag/` — **работающий** прототип RAG: `db/01-schema.sql` (pgvector: `books`, `book_chunks` как `halfvec(3072)`, HNSW-индекс, функции `match_book_chunks`/`get_book`/`list_books`/`delete_book`), `workflow/book-rag-system.json` (n8n, agentic RAG с 4 инструментами), `scripts/` (start/verify/ingest), `samples/books.csv` (20 книг), `docs/` (ARCHITECTURE/SETUP/USAGE). Эмбеддинги — Gemini `models/gemini-embedding-001` (3072 dims), chat-модель изолирована в одном узле. Секреты — только в `.env` (git-ignored), шаблон `.env.example`.
 - `docker-compose.yml` — локальный RabbitMQ (`rabbitmq:4-management`): AMQP `:5672`, management UI `:15672`, healthcheck `rabbitmq-diagnostics -q ping`, volume `rabbitmq-data`. Логин/пароль — из `RABBITMQ_USER`/`RABBITMQ_PASS` (по умолчанию `guest`). Плюс pgvector (`pgvector/pgvector:pg17`, контейнер `library-ai-rag-db`, хост-порт `:5433`, volume `ai-rag-db-data`): init-скрипты монтируются из `services/ai-service/rag/db/`, учётные данные — из `AI_RAG_DB_USER`/`AI_RAG_DB_PASSWORD`/`AI_RAG_DB_NAME` (по умолчанию `bookrag`). Сервисы и их БД — задача issue #6.
 
 ## Сборка и запуск
@@ -154,9 +158,9 @@ smart-library/
 | Запуск Book Service | `go run ./cmd/server` (gRPC на `:8081`, REST + Swagger на `:8091`) | `book-service/` |
 | Запуск User Service | `go run ./cmd/server` (gRPC на `:8082`, REST + Swagger на `:8092`), нужна PostgreSQL | `user-service/` |
 | Генерация gRPC-кода | `./scripts/gen_proto.ps1` | корень (PowerShell) |
-| Инфраструктура (брокер) | `docker compose up -d` (RabbitMQ `:5672`, UI `:15672`), `docker compose down -v` | корень |
+| Инфраструктура (брокер + pgvector) | `docker compose up -d` (RabbitMQ `:5672`, UI `:15672`; pgvector `:5433`), `docker compose down -v` | корень |
 
-Текущее состояние проверок (последний запуск): build/vet — чисто во всех трёх модулях; тесты — `book-service` (23 теста + 27 подтестов) и `user-service` (41 тест + 127 подтестов: домен и security).
+Текущее состояние проверок (последний запуск): build/vet — чисто во всех трёх модулях; тесты — `book-service` (34 теста + 32 подтеста: домен, сервис, in-memory репозиторий, HTTP-слой) и `user-service` (49 тестов + 127 подтестов: домен, security, HTTP-слой).
 
 Нюанс с `gofmt -l`: в рабочем дереве файлы `book-service/*` и `pkg/config`, `pkg/logger` идут с **CRLF** (включён `core.autocrlf=true`), поэтому `gofmt -l` помечает их все, хотя содержимое отформатировано корректно (`gofmt -d` показывает различие только в концах строк). Файлы, созданные с LF (`user-service/*`, `pkg/migrate`), помечены не быть. Гонять `gofmt -w .` ради этого не нужно — это перепишет конца строк во всех файлах модуля; форматировать стоит точечно, в файлах где реально менялся код.
 
@@ -182,7 +186,7 @@ smart-library/
 
 **Стиль кода.** Стандартные инструменты экосистемы Go: `gofmt`/`goimports` для форматирования, `go vet` для анализа, стандартная структура имён и ошибок Go. Имена пакетов — строчные, без подчёркиваний; имена директорий — kebab-case (`book-service`). **Комментарии в коде — только на английском** (в `.go`, `.sql`, `.proto`, `.ps1`); документация (`README.md`, `KODA.md`, `*/README.md`) — на русском. Кириллица в строковых литералах допустима, когда это осмысленные тестовые данные (например, негативные кейсы валидации: `"Иван Петров"` должен быть отклонён).
 
-**Тестирование.** Используется стандартный `testing` (без testify). Unit-тесты живут рядом с кодом (`*_test.go`, пакет `*_test`). В `book-service` тесты сервиса и репозитория гоняются поверх in-memory `Store`, HTTP-слой проверяется через `httptest` (`internal/handler/http_test.go`). В `user-service` покрыты домен и security (PR #11). TODO: HTTP-слой `user-service` (issue #3), тесты `book-service` (issue #4), тесты репозитория против PostgreSQL (тестовые контейнеры), интеграционный тест gRPC-handler'а через `bufconn`, моки для gRPC-клиентов.
+**Тестирование.** Используется стандартный `testing` (без testify). Unit-тесты живут рядом с кодом (`*_test.go`, пакет `*_test`). В `book-service` тесты сервиса и репозитория гоняются поверх in-memory `Store`, HTTP-слой проверяется через `httptest` (`internal/handler/http_test.go`). В `user-service` покрыты домен, security (PR #11) и HTTP-слой (PR #26). TODO: тесты репозитория против PostgreSQL (тестовые контейнеры), интеграционный тест gRPC-handler'а через `bufconn`, моки для gRPC-клиентов.
 
 **Конфигурация.** Переменные окружения, читаются через `pkg/config` (значения по умолчанию задаются в `cmd/server/main.go`). Префикс Book Service — `BOOK_SERVICE_*` (см. таблицу в `book-service/README.md`).
 
@@ -200,7 +204,6 @@ smart-library/
 ## Открытые вопросы для уточнения
 
 - Механизм discovery: Consul или Kubernetes DNS (см. issue #8).
-- Выбрать драйвер/ORM для PostgreSQL и инструмент миграций.
 - Определить, какие эндпоинты gateway'я публичные (REST) и какие внутренние (gRPC).
-- Настроить CI и контейнеризацию (см. issues #5, #6).
-- Покрыть тестами `user-service`: HTTP-слой (issue #3) и Book Service (issue #4); домен и security закрыты в PR #11.
+- Настроить контейнеризацию (issue #6); CI закрыт в PR #28.
+- Покрыть тестами репозитории против PostgreSQL и интеграционные gRPC-тесты; HTTP-слои user/book закрыты в PR #26/#27.
