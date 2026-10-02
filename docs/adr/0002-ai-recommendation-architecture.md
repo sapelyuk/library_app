@@ -89,6 +89,5 @@ n8n остаётся внутренней реализацией внутри э
 - #6 — Dockerfile + docker-compose для ai-service.
 
 ## Ссылки
-- Прототип: `deepseek-harness/n8n-rag-system/` (источник для переноса).
 - `README.md` — раздел «AI-модуль».
 - `KODA.md` — план развития (AI-модуль → RAG).
