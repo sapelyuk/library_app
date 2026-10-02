@@ -1,11 +1,11 @@
 # Local development infrastructure.
-# Message broker chosen in ADR-0001 (docs/adr/0001-message-broker.md).
 #
 #   docker compose up -d        # start
 #   docker compose logs -f rabbitmq
-#   docker compose down -v      # stop and remove the volume
+#   docker compose down -v      # stop and remove the volumes
 
 services:
+  # Message broker chosen in ADR-0001 (docs/adr/0001-message-broker.md).
   rabbitmq:
     image: rabbitmq:4-management
     container_name: library-rabbitmq
@@ -25,5 +25,33 @@ services:
       retries: 5
       start_period: 20s
 
+  # Vector store for the AI recommendation service (ADR-0002,
+  # docs/adr/0002-ai-recommendation-architecture.md).
+  # Schema and helper scripts: services/ai-service/rag/ (db/, scripts/).
+  # Published on host port 5433 only, so the local PostgreSQL on 5432 is untouched.
+  ai-rag-db:
+    image: pgvector/pgvector:pg17
+    container_name: library-ai-rag-db
+    hostname: library-ai-rag-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${AI_RAG_DB_USER:-bookrag}
+      POSTGRES_PASSWORD: ${AI_RAG_DB_PASSWORD:-bookrag}
+      POSTGRES_DB: ${AI_RAG_DB_NAME:-bookrag}
+      # Deterministic collation so index behaviour does not depend on the host locale.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - ai-rag-db-data:/var/lib/postgresql/data
+      # Init scripts run once, only when the volume is first created.
+      - ./services/ai-service/rag/db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AI_RAG_DB_USER:-bookrag} -d ${AI_RAG_DB_NAME:-bookrag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
 volumes:
   rabbitmq-data:
+  ai-rag-db-data:

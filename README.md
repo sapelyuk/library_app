@@ -21,6 +21,7 @@ AI-рекомендациями книг на LLM/RAG.
 | User Service         | Читатели, библиотекари, доступ     | 8082 |
 | Loan Service         | Выдача/возврат, сроки возврата     | 8083 |
 | Notification Service | Email/SMS-уведомления о сроках     | 8084 |
+| AI Service           | Рекомендации книг через LLM/RAG    | 8085 |
 
 Book Service дополнительно поднимает HTTP-слой для разработки на **8091**: REST-эндпоинты,
 сгенерированные из аннотаций `google.api.http` его proto-контракта (grpc-gateway),
@@ -46,9 +47,13 @@ Smart Library AI является **первоклассным компонен�
    Каждый сервис предоставляет gRPC-API — фронтенд и AI-модуль вызывают их
    независимо и параллельно.
 2. **LLM/RAG через отдельный сервис.** AI-логика инкапсулирована в
-   `ai-assistant/` (см. `docs/ai-first-principles.md`):
+   `services/ai-service/` (см. `docs/ai-first-principles.md` и ADR-0002
+   `docs/adr/0002-ai-recommendation-architecture.md`):
    - **RAG** для точности: семантический поиск по каталогу книг через векторную
-     БД, результаты конкатенируются в контекст для LLM.
+     БД (pgvector, контейнер `ai-rag-db` в `docker-compose.yml`), результаты
+     конкатенируются в контекст для LLM.
+   - **Прототип перенесён** в `services/ai-service/rag/` — n8n workflow,
+     схема pgvector, скрипты и документация (`rag/README.md`).
    - **Промпты версионируются** в `ai/prompts/` — каждый шаблон хранится как
      отдельный файл с номером версии.
    - **Оценка качества** в `ai/eval/` — тестовые сценарии, метрики
@@ -62,7 +67,7 @@ Smart Library AI является **первоклассным компонен�
 
 Полные принципы описаны в `docs/ai-first-principles.md`.
 
-## Состояние (на 2026-09)
+## Состояние (на 2026-10)
 
 | Компонент                                             | Состояние                                              |
 |-------------------------------------------------------|--------------------------------------------------------|
@@ -77,6 +82,7 @@ Smart Library AI является **первоклассным компонен�
 | Межсервисные gRPC-клиенты, события, discovery          | не начато (User Service отдаёт `AuthenticateToken` для будущего gateway) |
 | CI, контейнеризация                                    | не начато                                              |
 | Брокер сообщений: выбор и локальная инфраструктура    | готово: ADR-0001 (RabbitMQ), `docker-compose.yml`; реализация — #14 |
+| AI Service: архитектура (ADR-0002), артефакты RAG     | готово: ADR-0002, артефакты в `services/ai-service/rag/`; реализация — #23 |
 
 Локальный запуск Book Service:
 
@@ -117,14 +123,15 @@ docker compose down -v    # остановить и удалить volume
 ## Структура проекта (фактическая)
 
 ```
-library_app/
-├── go.work              # воркспейс: ./book-service, ./user-service, ./pkg
+smart-library/
+├── go.work              # воркспейс: ./services/book-service, ./services/user-service, ./pkg
 ├── README.md            # этот файл
 ├── KODA.md              # контекст репозитория для AI-сессий
-├── docker-compose.yml   # локальная инфраструктура: RabbitMQ (:5672, UI :15672)
+├── docker-compose.yml   # локальная инфраструктура: RabbitMQ (:5672, UI :15672), pgvector (:5433)
 ├── docs/
 │   ├── adr/
-│   │   └── 0001-message-broker.md  # решение по брокеру сообщений
+│   │   ├── 0001-message-broker.md  # решение по брокеру сообщений
+│   │   └── 0002-ai-recommendation-architecture.md  # архитектура AI-сервиса
 │   └── ai-first-principles.md  # принципы AI-first подхода
 ├── scripts/
 │   └── gen_proto.ps1    # кодогенерация protoc + go/go-grpc/grpc-gateway/openapiv2
@@ -132,32 +139,26 @@ library_app/
 ├── tools/
 │   └── protoc/          # локальный protoc 36.2
 ├── pkg/                 # общие библиотеки (config, logger, migrate)
-├── book-service/        # реализован, см. book-service/README.md
-│   ├── cmd/server/
-│   ├── proto/book/v1/
-│   ├── gen/go/          # генерация, не править руками
-│   ├── docs/            # swagger.json (генерация) + обёртка go:embed
-│   ├── internal/
-│   │   ├── domain/
-│   │   ├── repository/  # контракты + in-memory реализация
-│   │   ├── service/
-│   │   └── handler/
-│   └── migrations/
-├── user-service/        # реализован, см. user-service/README.md
-│   ├── cmd/server/
-│   ├── proto/user/v1/
-│   ├── gen/go/          # генерация, не править руками
-│   ├── docs/            # swagger.json (генерация) + обёртка go:embed
-│   ├── internal/
-│   │   ├── domain/      # User, Role, Status, Email, Session, RBAC
-│   │   ├── security/    # argon2id, токены
-│   │   ├── repository/  # контракты + postgres/
-│   │   ├── service/
-│   │   └── handler/     # gRPC, auth-интерцептор, REST + Swagger
-│   └── migrations/
-├── api-gateway/         # не начато
-├── loan-service/        # не начато
-└── notification-service/ # не начато
+└── services/
+    ├── book-service/    # реализован, см. book-service/README.md
+    │   ├── cmd/server/
+    │   ├── proto/book/v1/
+    │   ├── gen/go/      # генерация, не править руками
+    │   ├── docs/        # swagger.json (генерация) + обёртка go:embed
+    │   ├── internal/    # domain, repository (in-memory), service, handler
+    │   └── migrations/
+    ├── user-service/    # реализован, см. user-service/README.md
+    │   ├── cmd/server/
+    │   ├── proto/user/v1/
+    │   ├── gen/go/      # генерация, не править руками
+    │   ├── docs/        # swagger.json (генерация) + обёртка go:embed
+    │   ├── internal/    # domain, security, repository (postgres), service, handler
+    │   └── migrations/
+    ├── ai-service/      # архитектура ADR-0002, см. services/ai-service/README.md
+    │   └── rag/         # перенесённый прототип RAG (n8n workflow, pgvector схема, скрипты)
+    ├── api-gateway/     # не начато
+    ├── loan-service/    # не начато
+    └── notification-service/ # не начато
 ```
 
 Для локальной разработки нескольких модулей одновременно используется Go-воркспейс

@@ -1,0 +1,15 @@
+# Secrets and local state — never commit these
+.env
+*.env.local
+
+# Local database dumps / exports
+*.dump
+*.sql.gz
+dumps/
+
+# Editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.tmp

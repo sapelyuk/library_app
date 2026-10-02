@@ -1,0 +1,43 @@
+# Docker Compose — pgvector for the n8n Book Recommender RAG system
+#
+# Deliberately isolated from the user's existing local Postgres (which owns port 5432).
+# This stack publishes host port 5433 ONLY.
+#
+#   docker compose up -d          # start
+#   docker compose down           # stop (keeps data)
+#   docker compose down -v        # stop and DESTROY ALL DATA (never run casually)
+#
+# Or use the helper scripts: scripts\start-db.ps1 / scripts\stop-db.ps1
+
+name: n8n-book-rag
+
+services:
+  pgvector:
+    image: pgvector/pgvector:pg17
+    container_name: n8n-book-rag-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bookrag}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - copy .env.example to .env and set it}"
+      POSTGRES_DB: ${POSTGRES_DB:-bookrag}
+      # Deterministic collation so index behaviour does not depend on the host locale.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      # host:container — 5433 on the host, so the user's own Postgres on 5432 is untouched.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Files here run automatically, once, only when the data volume is first created,
+      # in filename order. 01-schema.sql creates the extension, tables and functions.
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # -U must match POSTGRES_USER or the healthcheck reports failure forever.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bookrag} -d ${POSTGRES_DB:-bookrag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  pgdata:
+    name: n8n_book_rag_pgdata
