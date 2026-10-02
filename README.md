@@ -1,16 +1,18 @@
 # Smart Library
 
 Полнофункциональная платформа управления библиотекой: **монорепозиторий** с
-бэкендом на Go (gRPC-микросервисы), планируемыми React-приложением и
-AI-рекомендациями книг на LLM/RAG.
+бэкендом на Go (gRPC-микросервисы), планируемым React-приложением и
+AI-рекомендациями книг на LLM/RAG (RAG-прототип работает).
 
 - **Бэкенд:** Go, gRPC + protobuf, grpc-gateway (REST/Swagger), PostgreSQL, RabbitMQ.
 - **Фронтенд (в плане):** React SPA, потребляющая REST-контракты сервисов.
-- **AI (в плане):** рекомендации книг через LLM/RAG как часть архитектуры, а не
-  надстройка — см. раздел «AI-first подход» и `docs/ai-first-principles.md`.
+- **AI:** рекомендации книг через LLM/RAG как часть архитектуры, а не надстройка.
+  RAG-прототип **работает от начала до конца** (n8n + pgvector + Gemini, 20 книг
+  проиндексировано) — см. раздел «AI-first подход» и `services/ai-service/rag/README.md`.
+  Go-адаптер сервиса (`ai.v1.AiService`) — не начат (issue #23).
 
-Проект в активной разработке: бэкенд-сервисы реализуются, фронтенд и AI-модуль —
-следующие этапы.
+Проект в активной разработке: бэкенд-сервисы и RAG-прототип работают, фронтенд и
+Go-адаптер AI-сервиса — следующие этапы.
 
 ## Архитектура
 
@@ -49,15 +51,32 @@ Smart Library AI является **первоклассным компонен�
 2. **LLM/RAG через отдельный сервис.** AI-логика инкапсулирована в
    `services/ai-service/` (см. `docs/ai-first-principles.md` и ADR-0002
    `docs/adr/0002-ai-recommendation-architecture.md`):
-   - **RAG** для точности: семантический поиск по каталогу книг через векторную
-     БД (pgvector, контейнер `ai-rag-db` в `docker-compose.yml`), результаты
-     конкатенируются в контекст для LLM.
-   - **Прототип перенесён** в `services/ai-service/rag/` — n8n workflow,
-     схема pgvector, скрипты и документация (`rag/README.md`).
-   - **Промпты версионируются** в `ai/prompts/` — каждый шаблон хранится как
-     отдельный файл с номером версии.
-   - **Оценка качества** в `ai/eval/` — тестовые сценарии, метрики
-     релевантности, регрессия при обновлении модели.
+   - **RAG для точности:** семантический поиск по каталогу книг через векторную
+     БД (pgvector, контейнер `ai-rag-db` в `docker-compose.yml`), найденные
+     фрагменты конкатенируются в контекст для LLM.
+   - **Прототип работает от начала до конца** в `services/ai-service/rag/` —
+     n8n workflow, схема pgvector, скрипты и документация. Проиндексировано
+     20 книг, обе точки входа (chat UI и webhook) прошли smoke-тест.
+   - **Промпты** в прототипе хранятся внутри n8n workflow; вынос в
+     версионируемые файлы (`services/ai-service/prompts/`) — направление развития.
+   - **Оценка качества** (`services/ai-service/eval/`) — тестовые сценарии, метрики
+     релевантности, регрессия при обновлении модели — в плане.
+
+   **Как устроен RAG-конвейер (работающий прототип):**
+
+   - **Эмбеддинги:** Gemini `models/gemini-embedding-001`, 3072 измерения;
+     в pgvector — `halfvec(3072)` (HNSW над `vector` ограничен 2000 измерениями,
+     `halfvec` поднимает лимит до 4000).
+   - **Поиск:** приближённый по косинусу, индекс **HNSW**
+     (`book_chunks_embedding_idx`), функция `match_book_chunks`.
+   - **Agentic RAG:** агент вызывает 4 инструмента — `Search Book Library`
+     (векторный поиск), `Get Book Details` (точный lookup по `book_id`),
+     `List Library` (просмотр каталога), `Remove Book` (удаление);
+     chat-модель изолирована в одном узле (Gemini, документированная замена — Groq).
+   - **Точки входа:** chat UI и `POST /webhook/book-rag/recommend`.
+   - **Поток:** ingest → чанки → эмбеддинги → pgvector → retrieval → LLM → ответ.
+   - Подробности: `services/ai-service/rag/README.md`,
+     `rag/docs/ARCHITECTURE.md`, `rag/docs/USAGE.md`.
 3. **Фронтенд потребляет AI-контент как данные.** React-приложение получает
    рекомендации через REST-эндпоинт AI-сервиса и рендерит их в том же UI, что
    и обычные данные из каталога.
@@ -80,9 +99,11 @@ Smart Library AI является **первоклассным компонен�
 | Миграции User Service (`pkg/migrate`, embed FS)        | готовы, применяются при старте                         |
 | Loan / Notification Service, API Gateway               | не начато                                              |
 | Межсервисные gRPC-клиенты, события, discovery          | не начато (User Service отдаёт `AuthenticateToken` для будущего gateway) |
-| CI, контейнеризация                                    | не начато                                              |
+| CI (GitHub Actions: build + test)                     | готово (PR #28)                                        |
+| Контейнеризация (Dockerfile + compose для сервисов)   | не начато (issue #6)                                   |
 | Брокер сообщений: выбор и локальная инфраструктура    | готово: ADR-0001 (RabbitMQ), `docker-compose.yml`; реализация — #14 |
-| AI Service: архитектура (ADR-0002), артефакты RAG     | готово: ADR-0002, артефакты в `services/ai-service/rag/`; реализация — #23 |
+| AI Service: RAG-прототип (n8n + pgvector + Gemini)    | **работает end-to-end**: 20 книг проиндексировано, chat UI и webhook прошли smoke-тест; артефакты в `services/ai-service/rag/` |
+| AI Service: Go-адаптер `ai.v1.AiService`              | не начато (issue #23); архитектура — ADR-0002          |
 
 Локальный запуск Book Service:
 
@@ -111,14 +132,18 @@ go build ./... && go vet ./... && go test ./...
 ./scripts/gen_proto.ps1
 ```
 
-Локальная инфраструктура (брокер из ADR-0001):
+Локальная инфраструктура:
 
 ```bash
-docker compose up -d      # RabbitMQ: AMQP :5672, management UI http://localhost:15672
-docker compose down -v    # остановить и удалить volume
+docker compose up -d            # RabbitMQ (AMQP :5672, UI http://localhost:15672) + pgvector (:5433)
+docker compose up -d ai-rag-db  # только векторная БД для RAG-прототипа
+docker compose down -v          # остановить и удалить volume
 ```
 
 Учётные данные брокера берутся из `RABBITMQ_USER`/`RABBITMQ_PASS` (по умолчанию `guest`).
+Векторная БД `ai-rag-db` (pgvector) настраивается через `AI_RAG_DB_USER`/`AI_RAG_DB_PASSWORD`/`AI_RAG_DB_NAME`
+(по умолчанию `bookrag`), схема применяется из `services/ai-service/rag/db/`. Быстрый старт RAG-прототипа —
+в `services/ai-service/rag/README.md`.
 
 ## Структура проекта (фактическая)
 
@@ -128,6 +153,7 @@ smart-library/
 ├── README.md            # этот файл
 ├── KODA.md              # контекст репозитория для AI-сессий
 ├── docker-compose.yml   # локальная инфраструктура: RabbitMQ (:5672, UI :15672), pgvector (:5433)
+├── .github/workflows/   # CI: build + test (ci.yml)
 ├── docs/
 │   ├── adr/
 │   │   ├── 0001-message-broker.md  # решение по брокеру сообщений
@@ -154,8 +180,8 @@ smart-library/
     │   ├── docs/        # swagger.json (генерация) + обёртка go:embed
     │   ├── internal/    # domain, security, repository (postgres), service, handler
     │   └── migrations/
-    ├── ai-service/      # архитектура ADR-0002, см. services/ai-service/README.md
-    │   └── rag/         # перенесённый прототип RAG (n8n workflow, pgvector схема, скрипты)
+    ├── ai-service/      # ADR-0002; RAG-прототип работает, см. services/ai-service/README.md
+    │   └── rag/         # рабочий прототип RAG (n8n workflow, pgvector схема, скрипты)
     ├── api-gateway/     # не начато
     ├── loan-service/    # не начато
     └── notification-service/ # не начато
