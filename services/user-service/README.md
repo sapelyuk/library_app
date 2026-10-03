@@ -53,15 +53,17 @@ user-service/
 
 ## Хранилище
 
-PostgreSQL через `database/sql` + `lib/pq`. Драйвер выбран как минимально
-достаточный для текущей миграции (UUID генерирует приложение, `ON CONFLICT`
-и `gen_random_uuid()` не используются). На PG 17 есть смысл перейти на `pgx`
-(Issue #32).
+PostgreSQL через `database/sql` + `lib/pq`. Оба драйвера покрывают потребности миграции и репозитория; переход на `pgx` — отдельная задача (Issue #32). UUID генерирует приложение намеренно (см. `migrations/README.md`).
 
 Схема (`migrations/001_init.sql`): таблица `users` (уникальный `email`),
 таблица `sessions` (`token_hash` уникальный, `expires_at`), таблица
 `schema_migrations` для учёта применённого. Миграции применяются при старте
 (`pkg/migrate`); отключаются `USER_SERVICE_DB_MIGRATE=false`.
+
+Шапка `001_init.sql` описывает колонки как след поддержки PostgreSQL 9.3 — это
+история написания файла, а не описание текущей схемы: сервер — `postgres:17`, а
+сам файл неизменяем из-за сверки checksum. Актуальное обоснование типов — в
+`migrations/README.md` и в `COMMENT ON` из `002_document_schema.sql`.
 
 ### База в Docker
 

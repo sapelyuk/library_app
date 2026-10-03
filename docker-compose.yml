@@ -25,11 +25,10 @@ services:
       retries: 5
       start_period: 20s
 
-  # Primary application database for user-service (replaces the local
-  # PostgreSQL 9.3 on the host). On PG 17, which unblocks the switch from
-  # lib/pq to pgx (Issue #32) and lets the migration use 9.4+ features.
-  # Published on host port 5432 (the conventional port) now that the local
-  # server is gone; the DSN for user-service therefore keeps the same host:port.
+  # Primary application database for user-service, replacing the database that
+  # used to run on the host. Published on host port 5432 (the conventional port)
+  # now that the local server is gone, so the DSN for user-service keeps the
+  # same host:port. PG 17 also unblocks the switch from lib/pq to pgx (Issue #32).
   user-db:
     image: postgres:17
     container_name: library-user-db
