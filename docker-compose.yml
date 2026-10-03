@@ -25,10 +25,37 @@ services:
       retries: 5
       start_period: 20s
 
+  # Primary application database for user-service (replaces the local
+  # PostgreSQL 9.3 on the host). On PG 17, which unblocks the switch from
+  # lib/pq to pgx (Issue #32) and lets the migration use 9.4+ features.
+  # Published on host port 5432 (the conventional port) now that the local
+  # server is gone; the DSN for user-service therefore keeps the same host:port.
+  user-db:
+    image: postgres:17
+    container_name: library-user-db
+    hostname: library-user-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${USER_SERVICE_DB_USER:-library}
+      POSTGRES_PASSWORD: ${USER_SERVICE_DB_PASSWORD:-library}
+      POSTGRES_DB: ${USER_SERVICE_DB_NAME:-library_users}
+      # UTF8 + ICU so ILIKE and ordering behave correctly for Cyrillic data,
+      # independent of the host locale.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=ru"
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USER_SERVICE_DB_USER:-library} -d ${USER_SERVICE_DB_NAME:-library}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
   # Vector store for the AI recommendation service (ADR-0002,
   # docs/adr/0002-ai-recommendation-architecture.md).
   # Schema and helper scripts: services/ai-service/rag/ (db/, scripts/).
-  # Published on host port 5433 only, so the local PostgreSQL on 5432 is untouched.
+  # Published on host port 5433, alongside the user-service database on 5432.
   ai-rag-db:
     image: pgvector/pgvector:pg17
     container_name: library-ai-rag-db
@@ -55,3 +82,4 @@ services:
 volumes:
   rabbitmq-data:
   ai-rag-db-data:
+  user-db-data:
