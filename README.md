@@ -133,13 +133,32 @@ go build ./... && go vet ./... && go test ./...
 ./scripts/gen_proto.ps1
 ```
 
-Локальная инфраструктура:
+Полный стек одной командой (сборка образов сервисов + инфраструктура):
 
 ```bash
-docker compose up -d            # RabbitMQ (AMQP :5672, UI :15672) + user-db (:5432) + pgvector (:5433)
-docker compose up -d ai-rag-db  # только векторная БД для RAG-прототипа
+docker compose up -d --build    # сервисы :8081/:8091 и :8082/:8092 + БД + RabbitMQ
+docker compose logs -f book-service
 docker compose down -v          # остановить и удалить volume
 ```
+
+Состав `docker-compose.yml`:
+
+| Контейнер | Образ | Порты хоста |
+| --- | --- | --- |
+| `book-service` | build `services/book-service/Dockerfile` | `8081` (gRPC), `8091` (REST + Swagger + `/healthz`) |
+| `user-service` | build `services/user-service/Dockerfile` | `8082` (gRPC), `8092` (REST + Swagger + `/healthz`) |
+| `book-db` | `postgres:17` | `5434` |
+| `user-db` | `postgres:17` | `5432` |
+| `ai-rag-db` | `pgvector/pgvector:pg17` | `5433` |
+| `rabbitmq` | `rabbitmq:4-management` | `5672`, `15672` |
+
+Оба Dockerfile'а — multi-stage (`golang:1.27-alpine` → `alpine:3.21`), собираются из **корня репозитория**:
+модули используют `replace ... => ../../pkg`, поэтому контекст сборки — корень, а не каталог сервиса.
+Контейнеры работают под непривилегированным пользователем; healthcheck бьёт в `GET /healthz`
+(HTTP-эндпоинт, добавленный рядом с REST-слоем).
+
+> `ai-rag-db` слушает порт `5433`; если его уже занял другой локальный проект, контейнер не стартует.
+> Остальные сервисы от него не зависят.
 
 Учётные данные брокера берутся из `RABBITMQ_USER`/`RABBITMQ_PASS` (по умолчанию `guest`).
 Векторная БД `ai-rag-db` (pgvector) настраивается через `AI_RAG_DB_USER`/`AI_RAG_DB_PASSWORD`/`AI_RAG_DB_NAME`
@@ -153,7 +172,8 @@ smart-library/
 ├── go.work              # воркспейс: ./services/book-service, ./services/user-service, ./pkg
 ├── README.md            # этот файл
 ├── KODA.md              # контекст репозитория для AI-сессий
-├── docker-compose.yml   # локальная инфраструктура: RabbitMQ (:5672, UI :15672), user-db (:5432), pgvector (:5433)
+├── docker-compose.yml   # сервисы + БД + RabbitMQ: book/user-service, book-db (:5434), user-db (:5432), pgvector (:5433)
+├── .dockerignore        # исключает .git, go.work, артефакты из контекста сборки
 ├── .github/workflows/   # CI: build + test (ci.yml)
 ├── docs/
 │   ├── adr/
@@ -168,6 +188,7 @@ smart-library/
 ├── pkg/                 # общие библиотеки (config, logger, migrate)
 └── services/
     ├── book-service/    # реализован, см. book-service/README.md
+    │   ├── Dockerfile   # multi-stage образ (контекст сборки — корень репозитория)
     │   ├── cmd/server/
     │   ├── proto/book/v1/
     │   ├── gen/go/      # генерация, не править руками
@@ -175,6 +196,7 @@ smart-library/
     │   ├── internal/    # domain, repository (in-memory), service, handler
     │   └── migrations/
     ├── user-service/    # реализован, см. user-service/README.md
+    │   ├── Dockerfile   # multi-stage образ (контекст сборки — корень репозитория)
     │   ├── cmd/server/
     │   ├── proto/user/v1/
     │   ├── gen/go/      # генерация, не править руками
