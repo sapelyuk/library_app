@@ -112,8 +112,9 @@ cd book-service
 go run ./cmd/server     # gRPC на :8081, REST + Swagger на :8091
 ```
 
-Локальный запуск User Service (нужна база PostgreSQL; одноразовое создание роли и
-базы и переменные сида `USER_SERVICE_SEED_LIBRARIAN_*` описаны в `user-service/README.md`):
+Локальный запуск User Service (нужна база PostgreSQL — поднимается через
+`docker compose up -d user-db`; переменные сида `USER_SERVICE_SEED_LIBRARIAN_*`
+описаны в `user-service/README.md`):
 
 ```bash
 cd user-service
@@ -135,7 +136,7 @@ go build ./... && go vet ./... && go test ./...
 Локальная инфраструктура:
 
 ```bash
-docker compose up -d            # RabbitMQ (AMQP :5672, UI http://localhost:15672) + pgvector (:5433)
+docker compose up -d            # RabbitMQ (AMQP :5672, UI :15672) + user-db (:5432) + pgvector (:5433)
 docker compose up -d ai-rag-db  # только векторная БД для RAG-прототипа
 docker compose down -v          # остановить и удалить volume
 ```
@@ -152,7 +153,7 @@ smart-library/
 ├── go.work              # воркспейс: ./services/book-service, ./services/user-service, ./pkg
 ├── README.md            # этот файл
 ├── KODA.md              # контекст репозитория для AI-сессий
-├── docker-compose.yml   # локальная инфраструктура: RabbitMQ (:5672, UI :15672), pgvector (:5433)
+├── docker-compose.yml   # локальная инфраструктура: RabbitMQ (:5672, UI :15672), user-db (:5432), pgvector (:5433)
 ├── .github/workflows/   # CI: build + test (ci.yml)
 ├── docs/
 │   ├── adr/

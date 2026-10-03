@@ -7,8 +7,8 @@
 поднимает HTTP-слой (**:8092**): REST-ручки из аннотаций `google.api.http`
 (grpc-gateway) и Swagger UI.
 
-В отличие от Book Service, хранилище здесь сразу **PostgreSQL**: сессии и
-пароли не должны жить в памяти процесса.
+В отличие от Book Service, хранилище здесь сразу **PostgreSQL** (Docker,
+PG 17): сессии и пароли не должны жить в памяти процесса.
 
 ## Архитектура
 
@@ -53,28 +53,28 @@ user-service/
 
 ## Хранилище
 
-PostgreSQL через `database/sql` + `lib/pq`. Драйвер выбран из-за локальной
-базы **9.3.3**: `pgx` требует PG 14+, а SQL-миграция обходится без
-`gen_random_uuid()`, `ON CONFLICT` и `CREATE INDEX IF NOT EXISTS` — UUID
-генерирует приложение.
+PostgreSQL через `database/sql` + `lib/pq`. Драйвер выбран как минимально
+достаточный для текущей миграции (UUID генерирует приложение, `ON CONFLICT`
+и `gen_random_uuid()` не используются). На PG 17 есть смысл перейти на `pgx`
+(Issue #32).
 
 Схема (`migrations/001_init.sql`): таблица `users` (уникальный `email`),
 таблица `sessions` (`token_hash` уникальный, `expires_at`), таблица
 `schema_migrations` для учёта применённого. Миграции применяются при старте
 (`pkg/migrate`); отключаются `USER_SERVICE_DB_MIGRATE=false`.
 
-### Провижининг локальной базы
+### База в Docker
+
+Сервис подключается к PostgreSQL из `docker-compose.yml` (контейнер
+`library-user-db`, порт хоста `5432`). Схема не требуется — сервис применит
+миграции сам при первом запуске.
 
 ```powershell
-# один раз, под ролью postgres
-$env:PGPASSWORD='...'
-& 'C:\Program Files\PostgreSQL\9.3\bin\psql.exe' -U postgres -h 127.0.0.1 `
-  -c "CREATE ROLE user_service LOGIN PASSWORD 'user_service'"
-& 'C:\Program Files\PostgreSQL\9.3\bin\psql.exe' -U postgres -h 127.0.0.1 `
-  -c "CREATE DATABASE library_users OWNER user_service"
+# поднимает user-db на localhost:5432
+docker compose up -d user-db
 ```
 
-Сама миграция не нужна — сервис применит её при старте.
+DSN для `.env`: `host=127.0.0.1 port=5432 user=library password=library dbname=library_users sslmode=disable`.
 
 ## Запуск
 
@@ -101,7 +101,7 @@ go run ./cmd/server
 | --- | --- | --- |
 | `USER_SERVICE_GRPC_ADDR` | `:8082` | адрес gRPC-сервера |
 | `USER_SERVICE_HTTP_ADDR` | `:8092` | адрес REST/Swagger-сервера |
-| `USER_SERVICE_DB_DSN` | *(обязательна)* | строка подключения lib/pq |
+| `USER_SERVICE_DB_DSN` | *(обязательна)* | строка подключения PostgreSQL (Docker: `localhost:5432`) |
 | `USER_SERVICE_DB_MIGRATE` | `true` | применять миграции при старте |
 | `USER_SERVICE_SESSION_TTL` | `24h` | срок жизни bearer-токена |
 | `USER_SERVICE_PASSWORD_MIN_LENGTH` | `12` | минимальная длина пароля |
@@ -242,8 +242,7 @@ go test ./...
 
 - Unit- и интеграционных тестов пока нет (в отличие от book-service) —
   домен, сервис и postgres-слой проверены ручной проверкой живого API.
-- Локальный PostgreSQL 9.3: миграция сознательно без фич 9.4+; на PG 14+
-  имеет смысл перейти на `pgx`.
+- Драйвер `lib/pq` вместо `pgx` — на PG 17 переход разблокирован (Issue #32).
 - Нет аутентификации mTLS между сервисами: `AuthenticateToken` рассчитан на
   доверенную сеть.
 - Событий (NATS/Kafka) пока нет — другие сервисы используют только gRPC.
