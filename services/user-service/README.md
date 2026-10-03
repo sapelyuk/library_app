@@ -135,6 +135,9 @@ gRPC-сервер этого же процесса (`:8082`).
 же), спецификация — http://localhost:8092/swagger/swagger.json. Ассеты
 Swagger UI подключаются с CDN; спека отдаётся из бинарника (`//go:embed`).
 
+Liveness: **`GET /healthz`** → `200 OK`. Эндпоинт обслуживает HTTP-сервер
+рядом с REST-слоем и используется healthcheck'ом контейнера.
+
 Авторизация — заголовок `Authorization: Bearer <accessToken>` из ответа
 `login`. Публичные ручки — только `register` и `login`; `AuthenticateToken`
 существует для внутренних вызовов (будущие gateway/loan) и в REST не

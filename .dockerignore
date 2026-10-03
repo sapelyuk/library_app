@@ -1,0 +1,33 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Go workspace (not needed inside the container — replace directives in go.mod handle pkg)
+go.work
+go.work.sum
+
+# Build artifacts (will be rebuilt from clean sources)
+*.exe
+*.exe~
+*~
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test artifacts
+*_test
+test.coverprofile
+test.out
+
+# Docker (we don't want to copy dockerfiles into the build context of sibling services)
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+
+# AI service rag artifacts (not relevant to Go services)
+services/ai-service/rag/
+services/ai-service/docs/

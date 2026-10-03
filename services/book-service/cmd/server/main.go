@@ -20,12 +20,12 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
+	pkgconfig "github.com/sapelyuk/smart-library/pkg/config"
+	"github.com/sapelyuk/smart-library/pkg/logger"
 	bookv1 "github.com/sapelyuk/smart-library/services/book-service/gen/go/book/v1"
 	"github.com/sapelyuk/smart-library/services/book-service/internal/handler"
 	"github.com/sapelyuk/smart-library/services/book-service/internal/repository/memory"
 	"github.com/sapelyuk/smart-library/services/book-service/internal/service"
-	pkgconfig "github.com/sapelyuk/smart-library/pkg/config"
-	"github.com/sapelyuk/smart-library/pkg/logger"
 )
 
 // healthService matches the proto package of the API.
@@ -151,13 +151,29 @@ func startREST(cfg appConfig, grpcAddr net.Addr) (*http.Server, *grpc.ClientConn
 
 	server := &http.Server{
 		Addr:              cfg.httpAddr,
-		Handler:           restHandler,
+		Handler:           withHealthEndpoint(restHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 	}
 
 	return server, conn, nil
+}
+
+// withHealthEndpoint adds the liveness endpoint that the container healthcheck
+// probes. The REST handler is a gRPC-gateway mux that owns every other path, so
+// the health path is intercepted before it reaches the gateway.
+func withHealthEndpoint(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "OK")
+
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // localTarget converts a listen address into a dialable one: wildcard hosts
